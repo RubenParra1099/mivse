@@ -20,6 +20,11 @@ async function main() {
   if (reset) {
     console.log('Eliminando tablas…');
     await db.query('drop table if exists llamadas, egresados, carreras cascade');
+    // Tablas heredadas del MIVSE anterior (Prisma)
+    await db.query(
+      `drop table if exists _prisma_migrations, capturas_campo, interacciones_historicas, ive_historial,
+         nucleo_familiar, trayectoria_laboral, webhook_eventos cascade`,
+    );
   }
   await db.query(readFileSync(new URL('../db/schema.sql', import.meta.url), 'utf8'));
   const { rows } = await db.query('select count(*)::int as n from egresados');
