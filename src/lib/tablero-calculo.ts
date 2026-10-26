@@ -3,10 +3,10 @@ import { calcularIVE, nivelDe, type MetaId, type Pesos } from './ive';
 import { NIVELES, type EstatusLaboral } from './catalogos';
 import type { DatasetTablero } from './tipos';
 
-export const DIMS = ['gen', 'car', 'sec', 'ing', 'lab', 'niv', 'mun'] as const;
+export const DIMS = ['gen', 'car', 'sec', 'ing', 'lab', 'niv', 'edo', 'mun'] as const;
 export type Dim = (typeof DIMS)[number];
 export type Filtros = Record<Dim, number[]>;
-export const FILTROS_VACIOS: Filtros = { gen: [], car: [], sec: [], ing: [], lab: [], niv: [], mun: [] };
+export const FILTROS_VACIOS: Filtros = { gen: [], car: [], sec: [], ing: [], lab: [], niv: [], edo: [], mun: [] };
 
 export interface Calculado {
   ive: Float32Array;
@@ -45,6 +45,7 @@ export function valorDim(d: DatasetTablero, calc: Calculado, dim: Dim, i: number
     case 'ing': return d.col.ing[i];
     case 'lab': return d.col.lab[i];
     case 'niv': return calc.niv[i];
+    case 'edo': return d.col.edo[i];
     case 'mun': return d.col.mun[i];
   }
 }

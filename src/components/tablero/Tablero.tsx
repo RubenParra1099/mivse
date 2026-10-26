@@ -14,7 +14,7 @@ import { ORIGEN_COLOR, type ColorMapa, type EscalaMapa, type ModoMapa } from './
 
 const MapaTablero = dynamic(() => import('./MapaTablero').then((m) => m.MapaTablero), { ssr: false });
 
-const NOMBRE_DIM: Record<Dim, string> = { gen: 'Generación', car: 'Carrera', sec: 'Sector', ing: 'Ingreso', lab: 'Estatus laboral', niv: 'Nivel', mun: 'Municipio' };
+const NOMBRE_DIM: Record<Dim, string> = { gen: 'Generación', car: 'Carrera', sec: 'Sector', ing: 'Ingreso', lab: 'Estatus laboral', niv: 'Nivel', edo: 'Estado', mun: 'Municipio' };
 const colorNivel = (ive: number) =>
   ive >= UMBRALES_NIVEL.embajador ? NIVEL_INFO.embajador.color : ive >= UMBRALES_NIVEL.activo ? NIVEL_INFO.activo.color : ive >= UMBRALES_NIVEL.ocasional ? NIVEL_INFO.ocasional.color : NIVEL_INFO.desconectado.color;
 
@@ -59,6 +59,7 @@ export function Tablero() {
         case 'ing': return d.dict.ingreso[v];
         case 'lab': return ESTATUS_INFO[d.dict.estatus[v] as EstatusLaboral].etiqueta;
         case 'niv': return NIVEL_INFO[NIVELES[v]].etiqueta;
+        case 'edo': return d.dict.estado[v];
         case 'mun': return d.dict.municipio[v];
       }
     },
@@ -69,7 +70,7 @@ export function Tablero() {
     if (!d || !calc) return null;
     const op = (dim: Dim, orden?: (a: OpcionFiltro, b: OpcionFiltro) => number, color?: (v: number) => string): OpcionFiltro[] => {
       const g = agrupar(d, calc, sin(dim), dim);
-      const vals = dim === 'gen' ? [...new Set(d.col.gen)].sort((a, b) => b - a) : dim === 'niv' ? [0, 1, 2, 3] : dim === 'lab' ? d.dict.estatus.map((_, i) => i) : (d.dict[({ car: 'carrera', sec: 'sector', ing: 'ingreso', mun: 'municipio' } as const)[dim as 'car']] ?? []).map((_, i) => i);
+      const vals = dim === 'gen' ? [...new Set(d.col.gen)].sort((a, b) => b - a) : dim === 'niv' ? [0, 1, 2, 3] : dim === 'lab' ? d.dict.estatus.map((_, i) => i) : (d.dict[({ car: 'carrera', sec: 'sector', ing: 'ingreso', edo: 'estado', mun: 'municipio' } as const)[dim as 'car']] ?? []).map((_, i) => i);
       const xs = vals.map((v) => ({ v, etiqueta: etiquetaDe(dim, v), n: g.get(v)?.n ?? 0, color: color?.(v) }));
       return orden ? xs.sort(orden) : xs;
     };
@@ -80,6 +81,7 @@ export function Tablero() {
       ing: op('ing'),
       lab: op('lab', undefined, (v) => ESTATUS_INFO[d.dict.estatus[v] as EstatusLaboral].color),
       niv: op('niv', undefined, (v) => NIVEL_INFO[NIVELES[v]].color),
+      edo: op('edo', (a, b) => (b.n ?? 0) - (a.n ?? 0)),
       mun: op('mun', (a, b) => (b.n ?? 0) - (a.n ?? 0)),
     };
   }, [d, calc, sin, etiquetaDe]);
@@ -184,6 +186,7 @@ export function Tablero() {
         <Desplegable titulo="Ingreso" opciones={opciones.ing} sel={f.ing} onCambio={(v) => setF({ ...f, ing: v })} />
         <Desplegable titulo="Estatus laboral" opciones={opciones.lab} sel={f.lab} onCambio={(v) => setF({ ...f, lab: v })} />
         <Desplegable titulo="Nivel" opciones={opciones.niv} sel={f.niv} onCambio={(v) => setF({ ...f, niv: v })} />
+        <Desplegable titulo="Estado" opciones={opciones.edo} sel={f.edo} onCambio={(v) => setF({ ...f, edo: v })} />
         <Desplegable titulo="Municipio" opciones={opciones.mun} sel={f.mun} onCambio={(v) => setF({ ...f, mun: v })} />
         {hayFiltros && <span style={{ width: 1, height: 22, background: 'var(--line-2)', margin: '0 4px' }} />}
         {DIMS.flatMap((k) => f[k].map((v) => (
@@ -242,7 +245,7 @@ export function Tablero() {
             </div>
           </div>
           <div style={{ position: 'relative', height: 520, margin: '0 16px', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--mapbg)' }}>
-            <MapaTablero d={d} calc={calc} idx={idx} modo={modo} escala={escala} color={colorMapa} onMunicipio={(m) => toggle('mun', m)} />
+            <MapaTablero d={d} calc={calc} idx={idx} modo={modo} escala={escala} color={colorMapa} selMun={f.mun} selEdo={f.edo} onMunicipio={(m) => toggle('mun', m)} onEstado={(e) => toggle('edo', e)} />
           </div>
           <div style={{ padding: '10px 16px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {(modo === 'cluster' || modo === 'puntos') && (
@@ -253,6 +256,11 @@ export function Tablero() {
               </select>
             )}
             <Leyenda d={d} kpi={kpi} modo={modo} color={colorMapa} f={f} toggle={toggle} />
+            {(f.edo.length > 0 || f.mun.length > 0) && (
+              <a href="#reporte" className="btn sm primary no-print" style={{ marginLeft: 'auto' }}>
+                Ver {fmtN(idx.length)} registros de {[...f.edo.map((v) => d.dict.estado[v]), ...f.mun.map((v) => d.dict.municipio[v])].join(', ')} en la tabla ↓
+              </a>
+            )}
           </div>
         </section>
 
@@ -474,11 +482,20 @@ export function Tablero() {
       </section>
 
       {/* Reporte detallado */}
-      <section className="panel">
+      <section className="panel" id="reporte">
         <div className="panel-h">
           <div>
             <h3>Reporte de egresados</h3>
             <div className="sub" style={{ marginTop: 2 }}>{fmtN(idx.length)} registros con los filtros actuales</div>
+            {(f.edo.length > 0 || f.mun.length > 0) && (
+              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginTop: 8 }}>
+                {(['edo', 'mun'] as Dim[]).flatMap((k) => f[k].map((v) => (
+                  <button key={k + v} className="chip on" onClick={() => toggle(k, v)} title="Quitar">
+                    <Icono n="pin" s={13} /> <i>{NOMBRE_DIM[k]}</i> {etiquetaDe(k, v)} <span className="x"><Icono n="x" s={12} /></span>
+                  </button>
+                )))}
+              </div>
+            )}
           </div>
           <div className="no-print" style={{ display: 'flex', gap: 8 }}>
             <div className="seg">

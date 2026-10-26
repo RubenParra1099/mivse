@@ -68,7 +68,12 @@ export async function crearMapaBase(L: typeof Leaflet, el: HTMLElement, opts: { 
   // Contornos estatales (debajo de la red vial)
   let estadosCapa: Leaflet.GeoJSON | null = null;
   if (opts.estados !== false) {
-    map.createPane('estados').style.zIndex = '250';
+    const pane = map.createPane('estados');
+    pane.style.zIndex = '250';
+    // Los estados sólo responden a clic y cursor en las vistas regional y nacional
+    const interaccion = () => (pane.style.pointerEvents = map.getZoom() < 8 ? '' : 'none');
+    map.on('zoomend', interaccion);
+    interaccion();
     const est = await cargarEstados();
     estadosCapa = L.geoJSON(
       { type: 'FeatureCollection', features: est.map((e) => ({ type: 'Feature', properties: { n: e.n }, geometry: { type: 'MultiPolygon', coordinates: e.p.map((r) => [r]) } })) } as GeoJSON.FeatureCollection,

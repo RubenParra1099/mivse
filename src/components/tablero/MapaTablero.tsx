@@ -26,17 +26,20 @@ const colorIVE = (v: number) =>
   v >= 76 ? NIVEL_INFO.embajador.color : v >= 58 ? NIVEL_INFO.activo.color : v >= 30 ? NIVEL_INFO.ocasional.color : NIVEL_INFO.desconectado.color;
 
 export function MapaTablero({
-  d, calc, idx, modo, escala, color, onMunicipio,
+  d, calc, idx, modo, escala, color, selMun, selEdo, onMunicipio, onEstado,
 }: {
-  d: DatasetTablero; calc: Calculado; idx: number[]; modo: ModoMapa; escala: EscalaMapa; color: ColorMapa; onMunicipio: (m: number) => void;
+  d: DatasetTablero; calc: Calculado; idx: number[]; modo: ModoMapa; escala: EscalaMapa; color: ColorMapa;
+  selMun: number[]; selEdo: number[]; onMunicipio: (m: number) => void; onEstado: (e: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const st = useRef<{ L: typeof Leaflet; base: MapaBase; capa: Leaflet.Layer | null; rend: Leaflet.Canvas } | null>(null);
   const tema = useTema();
   const onMun = useRef(onMunicipio);
   onMun.current = onMunicipio;
-  const props = useRef({ d, calc, idx, modo, color });
-  props.current = { d, calc, idx, modo, color };
+  const onEdo = useRef(onEstado);
+  onEdo.current = onEstado;
+  const props = useRef({ d, calc, idx, modo, color, selMun, selEdo });
+  props.current = { d, calc, idx, modo, color, selMun, selEdo };
 
   useEffect(() => {
     let vivo = true;
@@ -68,12 +71,12 @@ export function MapaTablero({
 
   useEffect(() => {
     dibujar();
-  }, [idx, modo, color, calc]); // eslint-disable-line react-hooks/exhaustive-deps
+  }, [idx, modo, color, calc, selMun, selEdo]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function dibujar() {
     const s = st.current;
     if (!s) return;
-    const { d, calc, idx, modo, color } = props.current;
+    const { d, calc, idx, modo, color, selMun, selEdo } = props.current;
     const { L } = s;
     const map = s.base.map;
     if (s.capa) map.removeLayer(s.capa);
@@ -97,7 +100,10 @@ export function MapaTablero({
         <div class="pm">Matrícula ${esc(d.col.matricula[i])} · Generación ${d.col.gen[i]}</div>
         ${d.col.geo[i] === 1 ? '<div class="gq ok">Coordenada GPS capturada en campo</div>' : '<div class="gq">Ubicación estimada a partir del domicilio</div>'}
         <dl>${fila('Carrera', nombreCarrera(d.dict.carrera[d.col.car[i]]))}${fila('Municipio', `${d.dict.municipio[d.col.mun[i]]}, ${d.dict.estado[d.col.edo[i]]}`)}${fila('Estatus', lab)}${d.dict.sector[d.col.sec[i]] !== 'Sin dato' ? fila('Sector', d.dict.sector[d.col.sec[i]]) : ''}${d.col.nps[i] >= 0 ? fila('Recomendación', `${d.col.nps[i]}/10`) : ''}</dl>
-        <a href="/callcenter?q=${d.col.matricula[i]}" class="btn sm primary" style="width:100%;color:#fff">Abrir expediente en Call Center</a>
+        <div style="display:grid;gap:6px">
+          <button type="button" class="btn sm" data-filtra-mun="${d.col.mun[i]}" style="width:100%">${selMun.includes(d.col.mun[i]) ? 'Quitar filtro de' : 'Filtrar tabla por'} ${esc(d.dict.municipio[d.col.mun[i]])}</button>
+          <a href="/callcenter?q=${d.col.matricula[i]}" class="btn sm primary" style="width:100%;color:#fff">Abrir expediente en Call Center</a>
+        </div>
       </div>`;
     };
 
@@ -115,11 +121,20 @@ export function MapaTablero({
       const acento = cs.getPropertyValue('--accent').trim(), r1 = cs.getPropertyValue('--road1').trim(), r3 = cs.getPropertyValue('--road3').trim();
       s.base.estadosCapa.eachLayer((ly) => {
         const pl = ly as Leaflet.Polygon & { feature: { properties: { n: string } } };
-        const x = porEdo.get(pl.feature.properties.n);
-        pl.setStyle(x ? { fillColor: acento, fillOpacity: 0.12 + 0.5 * Math.sqrt(x.n / max), color: r1 } : { fillColor: r3, fillOpacity: 0.55, color: r1 });
+        const nombre = pl.feature.properties.n;
+        const x = porEdo.get(nombre);
+        const k = d.dict.estado.indexOf(nombre);
+        const elegido = k >= 0 && selEdo.includes(k);
+        pl.setStyle(
+          elegido
+            ? { fillColor: acento, fillOpacity: 0.45, color: acento, weight: 3 }
+            : x ? { fillColor: acento, fillOpacity: 0.12 + 0.5 * Math.sqrt(x.n / max), color: r1, weight: 1.2 } : { fillColor: r3, fillOpacity: 0.55, color: r1, weight: 1.2 },
+        );
+        pl.off('click');
+        if (k >= 0) pl.on('click', () => onEdo.current(k));
         pl.unbindTooltip();
         pl.bindTooltip(
-          `<b>${esc(pl.feature.properties.n)}</b><br>${x ? `${x.n.toLocaleString('es-MX')} egresados · IVE ${(x.ive / x.n).toFixed(1)}` : 'Sin egresados'}`,
+          `<b>${esc(nombre)}</b><br>${x ? `${x.n.toLocaleString('es-MX')} egresados · IVE ${(x.ive / x.n).toFixed(1)}` : 'Sin egresados'}${k >= 0 ? `<br><span style="color:var(--muted)">Clic para ${elegido ? 'quitar el filtro' : 'filtrar la tabla'}</span>` : ''}`,
           { sticky: true, className: 'edo', direction: 'top' },
         );
       });
@@ -143,7 +158,8 @@ export function MapaTablero({
       const grupo = L.featureGroup();
       for (const [k, x] of [...g.entries()].sort((a, b) => b[1].n - a[1].n)) {
         const prom = x.ive / x.n, c = colorIVE(prom);
-        const m = L.circleMarker([x.la / x.n, x.ln / x.n], { renderer: s.rend, radius: 8 + Math.sqrt(x.n / max) * 34, color: c, weight: 2, fillColor: c, fillOpacity: 0.3 });
+        const on = selMun.includes(k);
+        const m = L.circleMarker([x.la / x.n, x.ln / x.n], { renderer: s.rend, radius: 8 + Math.sqrt(x.n / max) * 34, color: on ? '#fff' : c, weight: on ? 3.5 : 2, fillColor: c, fillOpacity: on ? 0.6 : 0.3 });
         m.bindTooltip(`<b>${esc(d.dict.municipio[k])}</b><br>${x.n.toLocaleString('es-MX')} egresados<br>IVE promedio <b>${prom.toFixed(1)}</b> · Cobertura ${((x.con / x.n) * 100).toFixed(0)}%`, { direction: 'top', sticky: true, className: 'edo' });
         m.on('click', () => onMun.current(k));
         grupo.addLayer(m);
@@ -187,5 +203,13 @@ export function MapaTablero({
     s.capa?.addTo(map);
   }
 
-  return <div ref={ref} style={{ position: 'absolute', inset: 0 }} />;
+  // Botón "Filtrar tabla por municipio" dentro de las fichas del mapa
+  const clicFicha = (e: React.MouseEvent) => {
+    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-filtra-mun]');
+    if (!b) return;
+    onMun.current(Number(b.dataset.filtraMun));
+    st.current?.base.map.closePopup();
+  };
+
+  return <div ref={ref} onClick={clicFicha} style={{ position: 'absolute', inset: 0 }} />;
 }
