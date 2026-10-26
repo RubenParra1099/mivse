@@ -1,0 +1,35 @@
+{
+  "name": "mivse",
+  "version": "2.0.0",
+  "private": true,
+  "description": "MIVSE — Plataforma de Call Center y Tablero de Control del Modelo Integral de Vinculación y Seguimiento de Egresados",
+  "engines": { "node": ">=20.11" },
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "db:setup": "tsx --env-file=.env scripts/db-setup.ts",
+    "db:reset": "tsx --env-file=.env scripts/db-setup.ts --reset"
+  },
+  "dependencies": {
+    "echarts": "5.6.0",
+    "leaflet": "1.9.4",
+    "leaflet.heat": "0.2.0",
+    "leaflet.markercluster": "1.5.3",
+    "next": "15.5.28",
+    "pg": "8.23.1",
+    "react": "19.1.1",
+    "react-dom": "19.1.1"
+  },
+  "devDependencies": {
+    "@types/leaflet": "1.9.22",
+    "@types/leaflet.markercluster": "1.5.6",
+    "@types/node": "22.18.6",
+    "@types/pg": "8.23.1",
+    "@types/react": "19.1.13",
+    "@types/react-dom": "19.1.9",
+    "tsx": "4.20.5",
+    "typescript": "5.9.2"
+  }
+}
