@@ -71,6 +71,9 @@ export type ResultadoId = (typeof RESULTADOS)[number]['id'];
 
 export const AGENTES = ['Ana Torres', 'Luis Méndez', 'Karla Ríos', 'Jorge Salas', 'Paola Núñez', 'Diego Herrera'];
 
+/** Encuestadores de la App de Campo (Módulo 1). */
+export const ENCUESTADORES = ['Mariana López', 'Ricardo Ibarra', 'Fernanda Castro', 'Héctor Villarreal', 'Sofía Garza', 'Andrés Cárdenas'];
+
 /** Municipios donde radican los egresados. `peso` = proporción relativa en el censo; `r` = dispersión en grados. */
 export const MUNICIPIOS = [
   { nombre: 'Torreón', estado: 'Coahuila', lat: 25.5428, lng: -103.4068, peso: 40, r: 0.035, lada: '871' },

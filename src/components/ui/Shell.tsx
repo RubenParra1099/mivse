@@ -6,6 +6,7 @@ import { useTema } from '@/hooks/useTema';
 
 const NAV = [
   { href: '/', label: 'Inicio', icono: 'inicio' },
+  { href: '/captura', label: 'Campo', icono: 'gps' },
   { href: '/callcenter', label: 'Call Center', icono: 'headset' },
   { href: '/tablero', label: 'Tablero', icono: 'tablero' },
 ];

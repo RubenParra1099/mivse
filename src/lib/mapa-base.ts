@@ -3,7 +3,7 @@
 // se dibuja en canvas por jerarquía sobre un fondo sólido, más los contornos estatales para la vista nacional.
 import type * as Leaflet from 'leaflet';
 
-interface Red {
+export interface Red {
   porClase: [number, number][][][];
   nombradas: [number, string, [number, number][]][];
 }
@@ -16,7 +16,7 @@ let red: Promise<Red> | null = null;
 let estados: Promise<Estado[]> | null = null;
 
 /** Formato de red-vial.txt: 1a línea = nombres; luego clase|nombre|x0,y0,dx,dy… (×1e5, deltas). */
-function cargarRed(): Promise<Red> {
+export function cargarRed(): Promise<Red> {
   if (!red) {
     red = fetch('/data/red-vial.txt').then(async (r) => {
       const raw = (await r.text()).trim();

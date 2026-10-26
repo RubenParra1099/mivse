@@ -21,7 +21,7 @@ export default async function Inicio() {
           Cada egresado, <span className="grad-text">localizado, contactado y vinculado.</span>
         </h1>
         <p className="muted" style={{ fontSize: 15.5, maxWidth: 700, margin: 0 }}>
-          Plataforma web de Call Center y Tablero de Control analítico sobre el censo de {fmtN(d.total)} egresados,
+          App de Campo con geolocalización, plataforma web de Call Center y Tablero de Control analítico sobre el censo de {fmtN(d.total)} egresados,
           con el cálculo automatizado del Índice de Vinculación del Egresado (IVE).
         </p>
         <div style={{ display: 'flex', gap: 10, marginTop: 6, alignItems: 'center' }}>
@@ -31,7 +31,9 @@ export default async function Inicio() {
         </div>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(340px, 1fr))', gap: 16 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(300px, 1fr))', gap: 16 }}>
+        <Modulo href="/captura" n="1" icono="gps" titulo="App de Campo"
+          puntos={['Captura con GPS del dispositivo y pin ajustable sobre la red vial', 'Calle y entre calles detectadas automáticamente', 'Funciona sin señal: guarda en el teléfono y sincroniza sola', 'Instalable en Android e iOS desde el navegador']} />
         <Modulo href="/callcenter" n="2" icono="headset" titulo="Plataforma Web de Call Center"
           puntos={['Buscador indexado por matrícula, nombre, carrera o estatus', 'Expediente único optimizado para escritorio', 'Llamada con un clic y WhatsApp con mensaje institucional', 'Flujo guiado que recalcula el nivel de vinculación al instante']} />
         <Modulo href="/tablero" n="3" icono="tablero" titulo="Tablero de Control y Analítica"

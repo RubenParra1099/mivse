@@ -62,3 +62,32 @@ create table if not exists llamadas (
 );
 create index if not exists llamadas_egresado on llamadas (egresado_id, created_at desc);
 create index if not exists llamadas_fecha on llamadas (created_at desc);
+
+-- ─── Módulo 1 · App de Campo ────────────────────────────────────────────────
+-- Domicilio levantado en campo (calle y número, colonia y entre calles)
+alter table egresados add column if not exists domicilio    text;
+alter table egresados add column if not exists colonia      text;
+alter table egresados add column if not exists entre_calles text;
+
+-- Bitácora de capturas de campo. uuid lo genera el dispositivo: la sincronización offline es idempotente.
+create table if not exists capturas (
+  id            bigserial primary key,
+  uuid          uuid not null unique,
+  egresado_id   integer not null references egresados(id) on delete cascade,
+  encuestador   text not null,
+  tipo          text not null check (tipo in ('alta', 'actualizacion')),
+  lat           double precision,
+  lng           double precision,
+  precision_m   real,
+  origen_ubicacion text check (origen_ubicacion in ('gps', 'mapa', 'busqueda')),
+  domicilio     text,
+  colonia       text,
+  entre_calles  text,
+  municipio     text,
+  notas         text,
+  ive_antes     numeric(5,1),
+  ive_despues   numeric(5,1),
+  capturado_en  timestamptz not null,
+  sincronizado_en timestamptz not null default now()
+);
+create index if not exists capturas_fecha on capturas (capturado_en desc);

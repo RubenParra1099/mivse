@@ -155,7 +155,13 @@ export function Expediente({ exp, onLlamar, onWhatsApp }: { exp: ExpedienteCompl
             {e.lat != null && e.lng != null ? (
               <>
                 <MiniMapa lat={e.lat} lng={e.lng} color={color} />
-                <div className="muted num" style={{ fontSize: 11.5, marginTop: 8 }}>{e.municipio}, {e.estado} · {e.lat.toFixed(5)}, {e.lng.toFixed(5)}</div>
+                {e.domicilio && (
+                  <div style={{ fontSize: 12.5, marginTop: 8, fontWeight: 600 }}>
+                    {e.domicilio}{e.colonia ? `, Col. ${e.colonia}` : ''}
+                    {e.entreCalles && <span className="muted" style={{ fontWeight: 500 }}> · entre {e.entreCalles}</span>}
+                  </div>
+                )}
+                <div className="muted num" style={{ fontSize: 11.5, marginTop: e.domicilio ? 2 : 8 }}>{e.municipio}, {e.estado} · {e.lat.toFixed(5)}, {e.lng.toFixed(5)}</div>
               </>
             ) : (
               <div className="vacio">Sin coordenada. Pendiente de visita de la App de Campo.</div>
@@ -178,7 +184,7 @@ export function Expediente({ exp, onLlamar, onWhatsApp }: { exp: ExpedienteCompl
                     <span className="dot" style={{ '--c': tono, marginTop: 4, boxShadow: '0 0 0 3px var(--panel)' } as React.CSSProperties} />
                     <div>
                       <div style={{ fontSize: 12.5, fontWeight: 600 }}>
-                        {r?.etiqueta} {l.canal === 'whatsapp' && <span className="muted">· WhatsApp</span>}
+                        {r?.etiqueta} {l.canal === 'whatsapp' && <span className="muted">· WhatsApp</span>}{l.canal === 'campo' && <span className="muted">· Visita de campo</span>}
                         {l.nivelAntes && l.nivelDespues && l.nivelAntes !== l.nivelDespues && (
                           <span className="muted"> · {NIVEL_INFO[l.nivelAntes].etiqueta} → <b style={{ color: NIVEL_INFO[l.nivelDespues].color }}>{NIVEL_INFO[l.nivelDespues].etiqueta}</b></span>
                         )}

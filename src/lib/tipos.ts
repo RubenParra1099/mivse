@@ -17,6 +17,10 @@ export interface Egresado {
   lng: number | null;
   /** 'campo' = coordenada GPS capturada por la App de Campo (Módulo 1). */
   geoOrigen: 'campo' | 'domicilio' | null;
+  /** Domicilio levantado en campo (Módulo 1). */
+  domicilio?: string | null;
+  colonia?: string | null;
+  entreCalles?: string | null;
   estatus: EstatusLaboral;
   sector: string | null;
   empresa: string | null;
@@ -40,7 +44,7 @@ export interface Llamada {
   matricula?: string;
   nombreEgresado?: string;
   agente: string;
-  canal: 'llamada' | 'whatsapp';
+  canal: 'llamada' | 'whatsapp' | 'campo';
   resultado: ResultadoId;
   notas: string | null;
   iveAntes: number | null;
@@ -135,4 +139,55 @@ export interface DatasetTablero {
     /** -1 = sin respuesta */
     nps: number[];
   };
+}
+
+/** Captura levantada por la App de Campo (Módulo 1). Se guarda en el dispositivo y se sincroniza al haber conexión. */
+export interface CapturaCampo {
+  /** Generado en el dispositivo: hace idempotente la sincronización. */
+  uuid: string;
+  encuestador: string;
+  capturadoEn: string;
+  matricula: string;
+  nombre: string;
+  apellidoPaterno: string;
+  apellidoMaterno: string;
+  genero: 'F' | 'M';
+  carrera: string;
+  generacion: number;
+  telefono: string;
+  email: string;
+  domicilio: string;
+  colonia: string;
+  entreCalles: string;
+  municipio: string;
+  lat: number | null;
+  lng: number | null;
+  precision: number | null;
+  origenUbicacion: 'gps' | 'mapa' | 'busqueda' | null;
+  estatus: EstatusLaboral;
+  sector: string | null;
+  empresa: string | null;
+  puesto: string | null;
+  rangoIngreso: string | null;
+  interesPosgrado: boolean;
+  aportaciones: string[];
+  participaciones: number;
+  nps: number | null;
+  notas: string;
+}
+
+export interface CapturaRegistrada {
+  uuid: string;
+  egresadoId: number;
+  matricula: string;
+  nombreEgresado: string;
+  encuestador: string;
+  tipo: 'alta' | 'actualizacion';
+  lat: number | null;
+  lng: number | null;
+  municipio: string | null;
+  iveAntes: number | null;
+  iveDespues: number;
+  nivel: Nivel;
+  capturadoEn: string;
 }

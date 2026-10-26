@@ -3,13 +3,13 @@ import { CARRERAS, ESTATUS_LABORAL, MUNICIPIOS, NIVELES, RANGOS_INGRESO, RESULTA
 import { generarCenso } from './generador';
 import { calcularIVE, nivelDe } from './ive';
 import { textoBusqueda, tokens } from './busqueda';
-import type { ActualizacionLlamada, DatasetTablero, Egresado, EgresadoResumen, ExpedienteCompleto, Llamada } from './tipos';
+import type { ActualizacionLlamada, CapturaCampo, CapturaRegistrada, DatasetTablero, Egresado, EgresadoResumen, ExpedienteCompleto, Llamada } from './tipos';
 
 const DIA = 86_400_000;
 
 // ─── Conexión ──────────────────────────────────────────────────────────────
 
-const g = globalThis as unknown as { __mivsePool?: Pool | null; __mivseDemo?: ReturnType<typeof generarCenso> };
+const g = globalThis as unknown as { __mivsePool?: Pool | null; __mivseDemo?: ReturnType<typeof generarCenso>; __mivseCapturas?: CapturaRegistrada[] };
 
 function pool(): Pool | null {
   if (g.__mivsePool !== undefined) return g.__mivsePool;
@@ -29,7 +29,8 @@ function demo() {
 
 const COLS = `id, matricula, nombre, apellido_paterno, apellido_materno, genero, carrera, generacion, telefono, email,
   municipio, estado, lat, lng, geo_origen, estatus_laboral, sector, empresa, puesto, rango_ingreso, interes_posgrado,
-  aportaciones, participaciones, nps, contactado, ultima_actualizacion, ultimo_contacto, proximo_contacto, ive, nivel`;
+  aportaciones, participaciones, nps, contactado, ultima_actualizacion, ultimo_contacto, proximo_contacto, ive, nivel,
+  domicilio, colonia, entre_calles`;
 
 type Fila = Record<string, unknown>;
 const iso = (v: unknown) => (v == null ? null : new Date(v as string).toISOString());
@@ -51,6 +52,9 @@ function aEgresado(f: Fila): Egresado {
     lat: f.lat as number | null,
     lng: f.lng as number | null,
     geoOrigen: f.geo_origen as Egresado['geoOrigen'],
+    domicilio: (f.domicilio as string) ?? null,
+    colonia: (f.colonia as string) ?? null,
+    entreCalles: (f.entre_calles as string) ?? null,
     estatus: f.estatus_laboral as Egresado['estatus'],
     sector: f.sector as string | null,
     empresa: f.empresa as string | null,
@@ -195,6 +199,10 @@ export function aplicarActualizacion(e: Egresado, a: ActualizacionLlamada, ahora
     n.ultimaActualizacion = ahora.toISOString();
   }
   if (a.resultado === 'reagendar') n.proximoContacto = a.proximoContacto ?? new Date(ahora.getTime() + DIA).toISOString();
+  return recalcular(n, ahora);
+}
+
+function recalcular(n: Egresado, ahora: Date): Egresado {
   const dias = n.ultimaActualizacion ? Math.floor((ahora.getTime() - Date.parse(n.ultimaActualizacion)) / DIA) : null;
   n.ive = calcularIVE({
     estatus: n.estatus,
@@ -269,6 +277,225 @@ export async function registrarLlamada(a: ActualizacionLlamada): Promise<{ egres
   } finally {
     c.release();
   }
+}
+
+// ─── Módulo 1 · Capturas de la App de Campo ───────────────────────────────
+
+/** Vacía → null; recorta espacios. */
+const val = (v: string | null | undefined) => (v && v.trim() ? v.trim() : null);
+
+/** Aplica una captura de campo sobre el expediente existente (o crea uno nuevo si la matrícula no existe). */
+export function aplicarCaptura(e: Egresado | null, c: CapturaCampo, id: number, ahora = new Date()): Egresado {
+  const cuando = new Date(Math.min(Date.parse(c.capturadoEn) || ahora.getTime(), ahora.getTime())).toISOString();
+  const m = MUNICIPIOS.find((x) => x.nombre === c.municipio);
+  const base: Egresado = e ?? ({
+    id, matricula: c.matricula, ive: 0, nivel: 'desconectado', proximoContacto: null, lat: null, lng: null, geoOrigen: null,
+    estado: m?.estado ?? 'Coahuila', telefono: '', email: '',
+  } as Egresado);
+  const n: Egresado = {
+    ...base,
+    nombre: c.nombre.trim(),
+    apellidoPaterno: c.apellidoPaterno.trim(),
+    apellidoMaterno: c.apellidoMaterno.trim(),
+    genero: c.genero,
+    carrera: c.carrera,
+    generacion: c.generacion,
+    telefono: val(c.telefono) ?? base.telefono,
+    email: val(c.email) ?? base.email,
+    domicilio: val(c.domicilio) ?? base.domicilio ?? null,
+    colonia: val(c.colonia) ?? base.colonia ?? null,
+    entreCalles: val(c.entreCalles) ?? base.entreCalles ?? null,
+    municipio: c.municipio,
+    estatus: c.estatus,
+    sector: c.sector,
+    empresa: val(c.empresa),
+    puesto: val(c.puesto),
+    rangoIngreso: c.rangoIngreso,
+    interesPosgrado: c.interesPosgrado,
+    aportaciones: c.aportaciones,
+    participaciones: c.participaciones,
+    nps: c.nps,
+    contactado: true,
+    ultimaActualizacion: cuando,
+    ultimoContacto: cuando,
+  };
+  if (m) n.estado = m.estado;
+  if (c.lat != null && c.lng != null) {
+    n.lat = c.lat;
+    n.lng = c.lng;
+    n.geoOrigen = 'campo';
+  }
+  if (n.estatus !== 'empleado' && n.estatus !== 'autoempleo') {
+    n.sector = null;
+    n.empresa = null;
+    n.puesto = null;
+    n.rangoIngreso = null;
+  }
+  return recalcular(n, ahora);
+}
+
+const aCaptura = (n: Egresado, c: CapturaCampo, tipo: CapturaRegistrada['tipo'], iveAntes: number | null): CapturaRegistrada => ({
+  uuid: c.uuid,
+  egresadoId: n.id,
+  matricula: n.matricula,
+  nombreEgresado: `${n.nombre} ${n.apellidoPaterno}`,
+  encuestador: c.encuestador,
+  tipo,
+  lat: c.lat,
+  lng: c.lng,
+  municipio: n.municipio,
+  iveAntes,
+  iveDespues: n.ive,
+  nivel: n.nivel,
+  capturadoEn: c.capturadoEn,
+});
+
+/** Registra la captura. Es idempotente por uuid: reenviar la misma captura offline no la duplica. */
+export async function registrarCaptura(c: CapturaCampo): Promise<{ captura: CapturaRegistrada; duplicada: boolean }> {
+  const p = pool();
+  const ahora = new Date();
+  if (!p) {
+    const d = demo();
+    const lista = (g.__mivseCapturas ??= []);
+    const previa = lista.find((x) => x.uuid === c.uuid);
+    if (previa) return { captura: previa, duplicada: true };
+    const idx = d.egresados.findIndex((x) => x.matricula === c.matricula);
+    const antes = idx >= 0 ? d.egresados[idx] : null;
+    const n = aplicarCaptura(antes, c, antes?.id ?? d.egresados.reduce((m, x) => Math.max(m, x.id), 0) + 1, ahora);
+    if (idx >= 0) d.egresados[idx] = n;
+    else d.egresados.push(n);
+    const captura = aCaptura(n, c, antes ? 'actualizacion' : 'alta', antes?.ive ?? null);
+    lista.unshift(captura);
+    d.llamadas.push({
+      id: d.llamadas.length + 1, egresadoId: n.id, matricula: n.matricula, nombreEgresado: captura.nombreEgresado, agente: c.encuestador,
+      canal: 'campo', resultado: 'actualizado', notas: val(c.notas), iveAntes: antes?.ive ?? null, iveDespues: n.ive,
+      nivelAntes: antes?.nivel ?? null, nivelDespues: n.nivel, fecha: ahora.toISOString(),
+    });
+    return { captura, duplicada: false };
+  }
+
+  const cx = await p.connect();
+  try {
+    await cx.query('begin');
+    const ya = await cx.query(
+      `select c.*, e.matricula, e.nombre || ' ' || e.apellido_paterno as nombre_egresado, e.nivel
+         from capturas c join egresados e on e.id = c.egresado_id where c.uuid = $1`,
+      [c.uuid],
+    );
+    if (ya.rows[0]) {
+      await cx.query('rollback');
+      return { captura: aCapturaFila(ya.rows[0]), duplicada: true };
+    }
+    const { rows } = await cx.query(`select ${COLS} from egresados where matricula = $1 for update`, [c.matricula]);
+    const antes = rows[0] ? aEgresado(rows[0]) : null;
+    const id: number = antes?.id ?? (await cx.query(`select nextval('egresados_id_seq')::int as id`)).rows[0].id;
+    const n = aplicarCaptura(antes, c, id, ahora);
+    const v = [n.id, n.matricula, n.nombre, n.apellidoPaterno, n.apellidoMaterno, n.genero, n.carrera, n.generacion, n.telefono, n.email,
+      n.municipio, n.estado, n.lat, n.lng, n.geoOrigen, n.estatus, n.sector, n.empresa, n.puesto, n.rangoIngreso, n.interesPosgrado,
+      n.aportaciones, n.participaciones, n.nps, n.contactado, n.ultimaActualizacion, n.ultimoContacto, n.proximoContacto, n.ive, n.nivel,
+      n.domicilio, n.colonia, n.entreCalles, textoBusqueda(n)];
+    await cx.query(
+      `insert into egresados (id, matricula, nombre, apellido_paterno, apellido_materno, genero, carrera, generacion, telefono, email,
+         municipio, estado, lat, lng, geo_origen, estatus_laboral, sector, empresa, puesto, rango_ingreso, interes_posgrado,
+         aportaciones, participaciones, nps, contactado, ultima_actualizacion, ultimo_contacto, proximo_contacto, ive, nivel,
+         domicilio, colonia, entre_calles, busqueda)
+       values (${v.map((_, i) => `$${i + 1}`).join(',')})
+       on conflict (id) do update set
+         nombre=excluded.nombre, apellido_paterno=excluded.apellido_paterno, apellido_materno=excluded.apellido_materno,
+         genero=excluded.genero, carrera=excluded.carrera, generacion=excluded.generacion, telefono=excluded.telefono,
+         email=excluded.email, municipio=excluded.municipio, estado=excluded.estado, lat=excluded.lat, lng=excluded.lng,
+         geo_origen=excluded.geo_origen, estatus_laboral=excluded.estatus_laboral, sector=excluded.sector, empresa=excluded.empresa,
+         puesto=excluded.puesto, rango_ingreso=excluded.rango_ingreso, interes_posgrado=excluded.interes_posgrado,
+         aportaciones=excluded.aportaciones, participaciones=excluded.participaciones, nps=excluded.nps,
+         contactado=excluded.contactado, ultima_actualizacion=excluded.ultima_actualizacion,
+         ultimo_contacto=excluded.ultimo_contacto, ive=excluded.ive, nivel=excluded.nivel, domicilio=excluded.domicilio,
+         colonia=excluded.colonia, entre_calles=excluded.entre_calles, busqueda=excluded.busqueda, updated_at=now()`,
+      v,
+    );
+    const tipo = antes ? 'actualizacion' : 'alta';
+    await cx.query(
+      `insert into capturas (uuid, egresado_id, encuestador, tipo, lat, lng, precision_m, origen_ubicacion, domicilio, colonia,
+         entre_calles, municipio, notas, ive_antes, ive_despues, capturado_en)
+       values ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14,$15,$16)`,
+      [c.uuid, n.id, c.encuestador, tipo, c.lat, c.lng, c.precision, c.origenUbicacion, n.domicilio, n.colonia, n.entreCalles,
+        n.municipio, val(c.notas), antes?.ive ?? null, n.ive, c.capturadoEn],
+    );
+    await cx.query(
+      `insert into llamadas (egresado_id, agente, canal, resultado, notas, ive_antes, ive_despues, nivel_antes, nivel_despues, created_at)
+       values ($1,$2,'campo','actualizado',$3,$4,$5,$6,$7,$8)`,
+      [n.id, c.encuestador, val(c.notas), antes?.ive ?? null, n.ive, antes?.nivel ?? null, n.nivel, ahora],
+    );
+    await cx.query('commit');
+    return { captura: aCaptura(n, c, tipo, antes?.ive ?? null), duplicada: false };
+  } catch (err) {
+    await cx.query('rollback');
+    throw err;
+  } finally {
+    cx.release();
+  }
+}
+
+function aCapturaFila(f: Fila): CapturaRegistrada {
+  return {
+    uuid: f.uuid as string,
+    egresadoId: f.egresado_id as number,
+    matricula: f.matricula as string,
+    nombreEgresado: f.nombre_egresado as string,
+    encuestador: f.encuestador as string,
+    tipo: f.tipo as CapturaRegistrada['tipo'],
+    lat: f.lat as number | null,
+    lng: f.lng as number | null,
+    municipio: f.municipio as string | null,
+    iveAntes: f.ive_antes == null ? null : Number(f.ive_antes),
+    iveDespues: Number(f.ive_despues),
+    nivel: f.nivel as CapturaRegistrada['nivel'],
+    capturadoEn: iso(f.capturado_en)!,
+  };
+}
+
+export interface ResumenCampo {
+  capturas: CapturaRegistrada[];
+  hoy: { total: number; altas: number; conGps: number; porEncuestador: { encuestador: string; total: number }[] };
+}
+
+export async function capturasRecientes(limite = 60): Promise<ResumenCampo> {
+  const p = pool();
+  const inicio = new Date();
+  inicio.setHours(0, 0, 0, 0);
+  let capturas: CapturaRegistrada[];
+  let hoy: CapturaRegistrada[];
+  if (!p) {
+    capturas = (g.__mivseCapturas ?? []).slice(0, limite);
+    hoy = (g.__mivseCapturas ?? []).filter((x) => Date.parse(x.capturadoEn) >= inicio.getTime());
+  } else {
+    const sel = `select c.*, e.matricula, e.nombre || ' ' || e.apellido_paterno as nombre_egresado, e.nivel
+                   from capturas c join egresados e on e.id = c.egresado_id`;
+    const [a, b] = await Promise.all([
+      p.query(`${sel} order by c.capturado_en desc limit $1`, [limite]),
+      p.query(`${sel} where c.capturado_en >= $1`, [inicio]),
+    ]);
+    capturas = a.rows.map(aCapturaFila);
+    hoy = b.rows.map(aCapturaFila);
+  }
+  const por = new Map<string, number>();
+  for (const x of hoy) por.set(x.encuestador, (por.get(x.encuestador) ?? 0) + 1);
+  return {
+    capturas,
+    hoy: {
+      total: hoy.length,
+      altas: hoy.filter((x) => x.tipo === 'alta').length,
+      conGps: hoy.filter((x) => x.lat != null).length,
+      porEncuestador: [...por].map(([encuestador, total]) => ({ encuestador, total })).sort((a, b) => b.total - a.total),
+    },
+  };
+}
+
+/** Expediente por matrícula (la App de Campo precarga los datos del egresado). */
+export async function porMatricula(matricula: string): Promise<Egresado | null> {
+  const p = pool();
+  if (!p) return demo().egresados.find((x) => x.matricula === matricula) ?? null;
+  const { rows } = await p.query(`select ${COLS} from egresados where matricula = $1`, [matricula]);
+  return rows[0] ? aEgresado(rows[0]) : null;
 }
 
 // ─── Actividad en vivo del Call Center ─────────────────────────────────────
