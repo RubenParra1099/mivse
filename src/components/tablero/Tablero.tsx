@@ -23,7 +23,7 @@ export function Tablero() {
   const [cargando, setCargando] = useState(false);
   const [f, setF] = useState<Filtros>(FILTROS_VACIOS);
   const [pesos, setPesos] = useState<Pesos>(PESOS_BASE);
-  const [modo, setModo] = useState<ModoMapa>('calor');
+  const [modo, setModo] = useState<ModoMapa>('cluster');
   const [escala, setEscala] = useState<EscalaMapa>('municipal');
   const [colorMapa, setColorMapa] = useState<ColorMapa>('nivel');
   const [pagina, setPagina] = useState(1);
@@ -220,34 +220,43 @@ export function Tablero() {
         {METAS.map((m) => <TarjetaMeta key={m.id} id={m.id} valor={kpi.valores[m.id]} faltan={kpi.faltan[m.id]} />)}
       </div>
 
-      {/* Mapa de calor geoespacial */}
+      {/* Mapa geoespacial (mismo estilo que la plataforma de vialidad) */}
       <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 12 }}>
-        <section className="panel" style={{ position: 'relative', height: 560, overflow: 'hidden' }}>
-          <MapaTablero d={d} calc={calc} idx={idx} modo={modo} escala={escala} color={colorMapa} onMunicipio={(m) => toggle('mun', m)} />
-          <div className="no-print" style={{ position: 'absolute', top: 12, left: 12, right: 12, zIndex: 500, display: 'flex', gap: 8, flexWrap: 'wrap', pointerEvents: 'none' }}>
-            <div className="seg" style={{ pointerEvents: 'auto', boxShadow: 'var(--shadow)' }}>
-              {(['calor', 'cluster', 'puntos', 'burbujas'] as ModoMapa[]).map((m) => (
-                <button key={m} className={modo === m ? 'on' : ''} onClick={() => setModo(m)}>{{ calor: 'Calor', cluster: 'Clúster', puntos: 'Puntos', burbujas: 'Municipios' }[m]}</button>
-              ))}
+        <section className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
+          <div className="panel-h no-print" style={{ flexWrap: 'wrap', paddingBottom: 12 }}>
+            <div>
+              <h3 style={{ display: 'flex', alignItems: 'center', gap: 8 }}><Icono n="mapa" s={16} /> Mapa de egresados</h3>
+              <div className="sub" style={{ marginTop: 2 }}>{fmtN(kpi.conGeo)} ubicados · pasa el cursor sobre una calle para ver su nombre</div>
             </div>
-            {(modo === 'cluster' || modo === 'puntos') && (
-              <div className="seg" style={{ pointerEvents: 'auto', boxShadow: 'var(--shadow)' }}>
-                {(['nivel', 'estatus', 'origen'] as ColorMapa[]).map((c) => (
-                  <button key={c} className={colorMapa === c ? 'on' : ''} onClick={() => setColorMapa(c)}>{{ nivel: 'Por nivel', estatus: 'Por estatus', origen: 'Por origen GPS' }[c]}</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <div className="seg">
+                {(['cluster', 'puntos', 'calor', 'burbujas'] as ModoMapa[]).map((m) => (
+                  <button key={m} className={modo === m ? 'on' : ''} onClick={() => setModo(m)}>{{ cluster: 'Agrupado', puntos: 'Puntos', calor: 'Calor', burbujas: 'Municipios' }[m]}</button>
                 ))}
               </div>
-            )}
-            <div style={{ flex: 1 }} />
-            <div className="seg" style={{ pointerEvents: 'auto', boxShadow: 'var(--shadow)' }}>
-              {(['municipal', 'estatal', 'nacional'] as EscalaMapa[]).map((e) => (
-                <button key={e} className={escala === e ? 'on' : ''} onClick={() => setEscala(e)}>{{ municipal: 'Municipal', estatal: 'Regional', nacional: 'Nacional' }[e]}</button>
-              ))}
+              <div className="seg">
+                {(['municipal', 'estatal', 'nacional'] as EscalaMapa[]).map((e) => (
+                  <button key={e} className={escala === e ? 'on' : ''} onClick={() => setEscala(e)}>{{ municipal: 'Municipal', estatal: 'Regional', nacional: 'Nacional' }[e]}</button>
+                ))}
+              </div>
             </div>
           </div>
-          <Leyenda modo={modo} color={colorMapa} />
+          <div style={{ position: 'relative', height: 520, margin: '0 16px', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--mapbg)' }}>
+            <MapaTablero d={d} calc={calc} idx={idx} modo={modo} escala={escala} color={colorMapa} onMunicipio={(m) => toggle('mun', m)} />
+          </div>
+          <div style={{ padding: '10px 16px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
+            {(modo === 'cluster' || modo === 'puntos') && (
+              <select className="select no-print" style={{ width: 'auto', height: 28, fontSize: 12, padding: '0 8px' }} value={colorMapa} onChange={(e) => setColorMapa(e.target.value as ColorMapa)} aria-label="Colorear por">
+                <option value="nivel">Color por nivel</option>
+                <option value="estatus">Color por estatus laboral</option>
+                <option value="origen">Color por origen de la coordenada</option>
+              </select>
+            )}
+            <Leyenda d={d} kpi={kpi} modo={modo} color={colorMapa} f={f} toggle={toggle} />
+          </div>
         </section>
 
-        <section className="panel" style={{ display: 'flex', flexDirection: 'column', height: 560 }}>
+        <section className="panel" style={{ display: 'flex', flexDirection: 'column', height: 642 }}>
           <div className="panel-h"><h3>Distribución territorial</h3><span className="sub">clic para filtrar</span></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '12px 16px 4px' }}>
             <MiniDato etiqueta="Con coordenada" valor={kpi.n ? `${((kpi.conGeo / kpi.n) * 100).toFixed(0)}%` : '—'} />
@@ -578,25 +587,47 @@ function MiniDato({ etiqueta, valor, color }: { etiqueta: string; valor: string;
   );
 }
 
-function Leyenda({ modo, color }: { modo: ModoMapa; color: ColorMapa }) {
-  let items: { c: string; t: string }[] = [];
+function Leyenda({ d, kpi, modo, color, f, toggle }: { d: DatasetTablero; kpi: { niveles: number[] }; modo: ModoMapa; color: ColorMapa; f: Filtros; toggle: (dim: Dim, v: number) => void }) {
   if (modo === 'calor') {
     return (
-      <div className="panel" style={{ position: 'absolute', left: 12, bottom: 28, zIndex: 500, padding: '8px 12px', fontSize: 11 }}>
-        <div className="eyebrow" style={{ marginBottom: 5 }}>Densidad de egresados</div>
-        <div style={{ width: 170, height: 8, borderRadius: 9, background: 'linear-gradient(90deg,#1d4ed8,#0891b2,#22d3ee,#f59e0b,#f43f5e)' }} />
-        <div className="muted" style={{ display: 'flex', justifyContent: 'space-between', marginTop: 3 }}><span>Baja</span><span>Alta</span></div>
+      <div className="mlegend">
+        <span className="lgi">Densidad de egresados <span style={{ width: 120, height: 8, borderRadius: 9, background: 'linear-gradient(90deg,#1d4ed8,#0891b2,#22d3ee,#f59e0b,#f43f5e)' }} /></span>
       </div>
     );
   }
-  if (modo === 'burbujas' || color === 'nivel') items = NIVELES.map((n) => ({ c: NIVEL_INFO[n].color, t: NIVEL_INFO[n].etiqueta }));
-  else if (color === 'estatus') items = Object.values(ESTATUS_INFO).map((e) => ({ c: e.color, t: e.etiqueta }));
-  else items = [{ c: ORIGEN_COLOR.campo, t: 'GPS capturado en campo' }, { c: ORIGEN_COLOR.domicilio, t: 'Estimada por domicilio' }];
+  if (modo === 'burbujas') {
+    return (
+      <div className="mlegend">
+        <span className="muted" style={{ fontSize: 11.5 }}>Color = IVE promedio · tamaño = egresados · clic para filtrar el municipio</span>
+        {NIVELES.map((n) => <span key={n} className="lgi"><i style={{ background: NIVEL_INFO[n].color }} />{NIVEL_INFO[n].etiqueta}</span>)}
+      </div>
+    );
+  }
+  if (color === 'origen') {
+    return (
+      <div className="mlegend">
+        <span className="lgi"><i style={{ background: ORIGEN_COLOR.campo }} />GPS capturado en campo</span>
+        <span className="lgi"><i style={{ background: ORIGEN_COLOR.domicilio }} />Estimada por domicilio</span>
+      </div>
+    );
+  }
+  if (color === 'estatus') {
+    return (
+      <div className="mlegend">
+        {d.dict.estatus.map((e, k) => (
+          <button key={e} className={`lgi ${f.lab.length && !f.lab.includes(k) ? 'off' : ''}`} onClick={() => toggle('lab', k)}>
+            <i style={{ background: ESTATUS_INFO[e as EstatusLaboral].color }} />{ESTATUS_INFO[e as EstatusLaboral].etiqueta}
+          </button>
+        ))}
+      </div>
+    );
+  }
   return (
-    <div className="panel" style={{ position: 'absolute', left: 12, bottom: 28, zIndex: 500, padding: '8px 12px', fontSize: 11.5, display: 'grid', gap: 3 }}>
-      <div className="eyebrow" style={{ marginBottom: 2 }}>{modo === 'burbujas' ? 'IVE promedio · tamaño = egresados' : 'Leyenda'}</div>
-      {items.map((x) => (
-        <span key={x.t} style={{ display: 'flex', alignItems: 'center', gap: 7 }}><span className="dot" style={{ '--c': x.c } as React.CSSProperties} />{x.t}</span>
+    <div className="mlegend">
+      {NIVELES.map((n, k) => (
+        <button key={n} className={`lgi ${f.niv.length && !f.niv.includes(k) ? 'off' : ''}`} onClick={() => toggle('niv', k)}>
+          <i style={{ background: NIVEL_INFO[n].color }} />{NIVEL_INFO[n].etiqueta} <b className="num">{fmtN(kpi.niveles[k])}</b>
+        </button>
       ))}
     </div>
   );

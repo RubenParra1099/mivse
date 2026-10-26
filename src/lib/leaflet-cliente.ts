@@ -19,11 +19,3 @@ export function cargarLeaflet(): Promise<typeof Leaflet> {
   }
   return promesa;
 }
-
-/** Mapa base minimalista (CARTO) que sigue el tema claro/oscuro, como en el tablero de vialidad. */
-export function urlTeselas(tema: 'dark' | 'light') {
-  return tema === 'dark'
-    ? 'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png'
-    : 'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png';
-}
-export const ATRIBUCION = '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> · © <a href="https://carto.com/">CARTO</a>';

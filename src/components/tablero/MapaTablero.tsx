@@ -2,17 +2,18 @@
 import { useEffect, useRef } from 'react';
 import type * as Leaflet from 'leaflet';
 import { ESTATUS_INFO, NIVELES, NIVEL_INFO, nombreCarrera, type EstatusLaboral } from '@/lib/catalogos';
-import { ATRIBUCION, cargarLeaflet, urlTeselas } from '@/lib/leaflet-cliente';
+import { cargarLeaflet } from '@/lib/leaflet-cliente';
+import { crearMapaBase, type MapaBase } from '@/lib/mapa-base';
 import type { Calculado } from '@/lib/tablero-calculo';
 import type { DatasetTablero } from '@/lib/tipos';
 import { useTema } from '@/hooks/useTema';
 
-export type ModoMapa = 'calor' | 'cluster' | 'puntos' | 'burbujas';
+export type ModoMapa = 'cluster' | 'puntos' | 'calor' | 'burbujas';
 export type EscalaMapa = 'municipal' | 'estatal' | 'nacional';
 export type ColorMapa = 'nivel' | 'estatus' | 'origen';
 
 export const ESCALAS: Record<EscalaMapa, [[number, number], [number, number]]> = {
-  municipal: [[25.47, -103.6], [25.63, -103.2]],
+  municipal: [[25.47, -103.56], [25.62, -103.2]],
   estatal: [[23.6, -106.3], [29.2, -99.8]],
   nacional: [[14.8, -117.5], [32.8, -86.7]],
 };
@@ -21,6 +22,8 @@ export const ORIGEN_COLOR = { campo: '#22c55e', domicilio: '#f59e0b' };
 const GRADIENTE = { 0.15: '#1d4ed8', 0.35: '#0891b2', 0.55: '#22d3ee', 0.75: '#f59e0b', 1: '#f43f5e' };
 
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
+const colorIVE = (v: number) =>
+  v >= 76 ? NIVEL_INFO.embajador.color : v >= 58 ? NIVEL_INFO.activo.color : v >= 30 ? NIVEL_INFO.ocasional.color : NIVEL_INFO.desconectado.color;
 
 export function MapaTablero({
   d, calc, idx, modo, escala, color, onMunicipio,
@@ -28,59 +31,39 @@ export function MapaTablero({
   d: DatasetTablero; calc: Calculado; idx: number[]; modo: ModoMapa; escala: EscalaMapa; color: ColorMapa; onMunicipio: (m: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
-  const st = useRef<{ L: typeof Leaflet; map: Leaflet.Map; teselas: Leaflet.TileLayer; capa: Leaflet.Layer | null; rend: Leaflet.Canvas } | null>(null);
+  const st = useRef<{ L: typeof Leaflet; base: MapaBase; capa: Leaflet.Layer | null; rend: Leaflet.Canvas } | null>(null);
   const tema = useTema();
   const onMun = useRef(onMunicipio);
   onMun.current = onMunicipio;
+  const props = useRef({ d, calc, idx, modo, color });
+  props.current = { d, calc, idx, modo, color };
 
-  const colorDe = (i: number) =>
-    color === 'nivel'
-      ? NIVEL_INFO[NIVELES[calc.niv[i]]].color
-      : color === 'estatus'
-        ? ESTATUS_INFO[d.dict.estatus[d.col.lab[i]] as EstatusLaboral].color
-        : d.col.geo[i] === 1 ? ORIGEN_COLOR.campo : ORIGEN_COLOR.domicilio;
-
-  const popup = (i: number) => {
-    const nv = NIVELES[calc.niv[i]];
-    return `<div style="min-width:220px">
-      <div style="font-size:10.5px;font-weight:700;letter-spacing:.08em;color:var(--muted);text-transform:uppercase">${esc(d.col.matricula[i])} · Gen ${d.col.gen[i]}</div>
-      <div style="font-weight:800;font-size:14px;margin:2px 0 6px">${esc(d.col.nombre[i])}</div>
-      <div style="display:flex;gap:6px;align-items:center;margin-bottom:6px">
-        <span class="badge" style="--c:${NIVEL_INFO[nv].color}">${NIVEL_INFO[nv].etiqueta}</span>
-        <b class="num">IVE ${calc.ive[i].toFixed(1)}</b>
-      </div>
-      <div style="color:var(--fg-2)">${esc(nombreCarrera(d.dict.carrera[d.col.car[i]]))}<br>${esc(ESTATUS_INFO[d.dict.estatus[d.col.lab[i]] as EstatusLaboral].etiqueta)} · ${esc(d.dict.sector[d.col.sec[i]])}</div>
-      <div style="margin-top:6px;font-size:11px;color:${d.col.geo[i] === 1 ? 'var(--ok)' : 'var(--warn)'}">${d.col.geo[i] === 1 ? '● Coordenada GPS capturada en campo' : '● Ubicación estimada por domicilio'}</div>
-      <a href="/callcenter?q=${d.col.matricula[i]}" class="btn sm primary" style="margin-top:10px;width:100%;color:#fff">Abrir en Call Center</a>
-    </div>`;
-  };
-
-  // Inicialización
   useEffect(() => {
     let vivo = true;
-    cargarLeaflet().then((L) => {
-      if (!vivo || !ref.current || st.current) return;
-      const map = L.map(ref.current, { preferCanvas: true, zoomSnap: 0.5, minZoom: 4, maxZoom: 18 });
-      map.attributionControl.setPrefix(false);
-      L.control.scale({ imperial: false }).addTo(map);
-      const teselas = L.tileLayer(urlTeselas(document.documentElement.dataset.theme === 'light' ? 'light' : 'dark'), { attribution: ATRIBUCION, maxZoom: 19, detectRetina: true }).addTo(map);
-      map.fitBounds(ESCALAS[escala]);
-      st.current = { L, map, teselas, capa: null, rend: L.canvas({ padding: 0.3 }) };
+    (async () => {
+      const L = await cargarLeaflet();
+      if (!vivo || !ref.current) return;
+      const base = await crearMapaBase(L, ref.current);
+      if (!vivo) return base.map.remove();
+      L.control.scale({ imperial: false }).addTo(base.map);
+      base.map.fitBounds(ESCALAS[escala]);
+      st.current = { L, base, capa: null, rend: L.canvas({ padding: 0.3, tolerance: 4 }) };
       dibujar();
-    });
+    })();
     return () => {
       vivo = false;
-      st.current?.map.remove();
+      st.current?.base.map.remove();
       st.current = null;
     };
   }, []); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    st.current?.teselas.setUrl(urlTeselas(tema));
-  }, [tema]);
+    st.current?.base.repintar();
+    dibujar();
+  }, [tema]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
-    st.current?.map.flyToBounds(ESCALAS[escala], { duration: 0.9 });
+    st.current?.base.map.flyToBounds(ESCALAS[escala], { duration: 0.9 });
   }, [escala]);
 
   useEffect(() => {
@@ -90,16 +73,63 @@ export function MapaTablero({
   function dibujar() {
     const s = st.current;
     if (!s) return;
-    const { L, map } = s;
+    const { d, calc, idx, modo, color } = props.current;
+    const { L } = s;
+    const map = s.base.map;
     if (s.capa) map.removeLayer(s.capa);
     s.capa = null;
     const { lat, lng } = d.col;
+
+    const colorDe = (i: number) =>
+      color === 'nivel'
+        ? NIVEL_INFO[NIVELES[calc.niv[i]]].color
+        : color === 'estatus'
+          ? ESTATUS_INFO[d.dict.estatus[d.col.lab[i]] as EstatusLaboral].color
+          : d.col.geo[i] === 1 ? ORIGEN_COLOR.campo : ORIGEN_COLOR.domicilio;
+
+    const popup = (i: number) => {
+      const nv = NIVELES[calc.niv[i]];
+      const lab = ESTATUS_INFO[d.dict.estatus[d.col.lab[i]] as EstatusLaboral].etiqueta;
+      const fila = (k: string, v: string | number) => `<dt>${k}</dt><dd>${esc(String(v))}</dd>`;
+      return `<div class="pp">
+        <div class="pk"><i style="background:${NIVEL_INFO[nv].color}"></i>${NIVEL_INFO[nv].etiqueta} · IVE ${calc.ive[i].toFixed(1)}</div>
+        <h4>${esc(d.col.nombre[i])}</h4>
+        <div class="pm">Matrícula ${esc(d.col.matricula[i])} · Generación ${d.col.gen[i]}</div>
+        ${d.col.geo[i] === 1 ? '<div class="gq ok">Coordenada GPS capturada en campo</div>' : '<div class="gq">Ubicación estimada a partir del domicilio</div>'}
+        <dl>${fila('Carrera', nombreCarrera(d.dict.carrera[d.col.car[i]]))}${fila('Municipio', `${d.dict.municipio[d.col.mun[i]]}, ${d.dict.estado[d.col.edo[i]]}`)}${fila('Estatus', lab)}${d.dict.sector[d.col.sec[i]] !== 'Sin dato' ? fila('Sector', d.dict.sector[d.col.sec[i]]) : ''}${d.col.nps[i] >= 0 ? fila('Recomendación', `${d.col.nps[i]}/10`) : ''}</dl>
+        <a href="/callcenter?q=${d.col.matricula[i]}" class="btn sm primary" style="width:100%;color:#fff">Abrir expediente en Call Center</a>
+      </div>`;
+    };
+
+    // Estados sombreados según el número de egresados filtrados (lectura nacional)
+    if (s.base.estadosCapa) {
+      const porEdo = new Map<string, { n: number; ive: number }>();
+      for (const i of idx) {
+        const k = d.dict.estado[d.col.edo[i]];
+        const x = porEdo.get(k) ?? { n: 0, ive: 0 };
+        x.n++; x.ive += calc.ive[i];
+        porEdo.set(k, x);
+      }
+      const max = Math.max(1, ...[...porEdo.values()].map((x) => x.n));
+      const cs = getComputedStyle(document.documentElement);
+      const acento = cs.getPropertyValue('--accent').trim(), r1 = cs.getPropertyValue('--road1').trim(), r3 = cs.getPropertyValue('--road3').trim();
+      s.base.estadosCapa.eachLayer((ly) => {
+        const pl = ly as Leaflet.Polygon & { feature: { properties: { n: string } } };
+        const x = porEdo.get(pl.feature.properties.n);
+        pl.setStyle(x ? { fillColor: acento, fillOpacity: 0.12 + 0.5 * Math.sqrt(x.n / max), color: r1 } : { fillColor: r3, fillOpacity: 0.55, color: r1 });
+        pl.unbindTooltip();
+        pl.bindTooltip(
+          `<b>${esc(pl.feature.properties.n)}</b><br>${x ? `${x.n.toLocaleString('es-MX')} egresados · IVE ${(x.ive / x.n).toFixed(1)}` : 'Sin egresados'}`,
+          { sticky: true, className: 'edo', direction: 'top' },
+        );
+      });
+    }
 
     if (modo === 'calor') {
       const pts: [number, number, number][] = [];
       for (const i of idx) if (lat[i] != null) pts.push([lat[i]!, lng[i]!, 1]);
       // @ts-expect-error — heatLayer lo agrega el plugin leaflet.heat
-      s.capa = L.heatLayer(pts, { radius: 16, blur: 18, minOpacity: 0.35, maxZoom: 14, max: Math.max(2, pts.length / 2500), gradient: GRADIENTE });
+      s.capa = L.heatLayer(pts, { radius: 15, blur: 17, minOpacity: 0.35, maxZoom: 15, max: Math.max(2, pts.length / 2500), gradient: GRADIENTE });
     } else if (modo === 'burbujas') {
       const g = new Map<number, { n: number; ive: number; la: number; ln: number; con: number }>();
       for (const i of idx) {
@@ -112,10 +142,9 @@ export function MapaTablero({
       const max = Math.max(1, ...[...g.values()].map((x) => x.n));
       const grupo = L.featureGroup();
       for (const [k, x] of [...g.entries()].sort((a, b) => b[1].n - a[1].n)) {
-        const prom = x.ive / x.n;
-        const c = prom >= 76 ? NIVEL_INFO.embajador.color : prom >= 58 ? NIVEL_INFO.activo.color : prom >= 30 ? NIVEL_INFO.ocasional.color : NIVEL_INFO.desconectado.color;
-        const m = L.circleMarker([x.la / x.n, x.ln / x.n], { renderer: s.rend, radius: 8 + Math.sqrt(x.n / max) * 34, color: c, weight: 2, fillColor: c, fillOpacity: 0.32 });
-        m.bindTooltip(`<b>${esc(d.dict.municipio[k])}</b><br>${x.n.toLocaleString('es-MX')} egresados<br>IVE promedio <b>${prom.toFixed(1)}</b><br>Cobertura ${((x.con / x.n) * 100).toFixed(0)}%`, { direction: 'top', sticky: true });
+        const prom = x.ive / x.n, c = colorIVE(prom);
+        const m = L.circleMarker([x.la / x.n, x.ln / x.n], { renderer: s.rend, radius: 8 + Math.sqrt(x.n / max) * 34, color: c, weight: 2, fillColor: c, fillOpacity: 0.3 });
+        m.bindTooltip(`<b>${esc(d.dict.municipio[k])}</b><br>${x.n.toLocaleString('es-MX')} egresados<br>IVE promedio <b>${prom.toFixed(1)}</b> · Cobertura ${((x.con / x.n) * 100).toFixed(0)}%`, { direction: 'top', sticky: true, className: 'edo' });
         m.on('click', () => onMun.current(k));
         grupo.addLayer(m);
       }
@@ -124,14 +153,14 @@ export function MapaTablero({
       const iconos = new Map<string, Leaflet.DivIcon>();
       const icono = (c: string) => {
         let ic = iconos.get(c);
-        if (!ic) iconos.set(c, (ic = L.divIcon({ className: '', html: `<div class="pin" style="width:12px;height:12px;background:${c}"></div>`, iconSize: [12, 12], iconAnchor: [6, 6] })));
+        if (!ic) iconos.set(c, (ic = L.divIcon({ className: 'dot-mk', html: `<i style="background:${c}"></i>`, iconSize: [14, 14], iconAnchor: [7, 7] })));
         return ic;
       };
       const cg = L.markerClusterGroup({
-        chunkedLoading: true, maxClusterRadius: 50, showCoverageOnHover: false, disableClusteringAtZoom: 17,
+        chunkedLoading: true, maxClusterRadius: 48, showCoverageOnHover: false, spiderfyOnMaxZoom: true, disableClusteringAtZoom: 18,
         iconCreateFunction: (c) => {
           const k = c.getChildCount();
-          const t = k < 20 ? 32 : k < 200 ? 40 : k < 1000 ? 48 : 56;
+          const t = k < 20 ? 30 : k < 200 ? 36 : k < 1000 ? 42 : 48;
           return L.divIcon({ html: `<span>${k < 1000 ? k : (k / 1000).toFixed(1) + 'k'}</span>`, className: 'clu', iconSize: [t, t] });
         },
       });
@@ -139,17 +168,18 @@ export function MapaTablero({
       for (const i of idx) {
         if (lat[i] == null) continue;
         const m = L.marker([lat[i]!, lng[i]!], { icon: icono(colorDe(i)), keyboard: false });
-        m.bindPopup(() => popup(i), { maxWidth: 300 });
+        m.bindPopup(() => popup(i), { maxWidth: 340, minWidth: 240, autoPanPadding: [30, 30] });
         ms.push(m);
       }
       cg.addLayers(ms);
       s.capa = cg;
     } else {
+      const panel = getComputedStyle(document.documentElement).getPropertyValue('--panel').trim();
       const grupo = L.featureGroup();
       for (const i of idx) {
         if (lat[i] == null) continue;
-        const m = L.circleMarker([lat[i]!, lng[i]!], { renderer: s.rend, radius: 4.2, weight: 1, color: 'rgba(0,0,0,.35)', fillColor: colorDe(i), fillOpacity: 0.9 });
-        m.bindPopup(() => popup(i), { maxWidth: 300 });
+        const m = L.circleMarker([lat[i]!, lng[i]!], { renderer: s.rend, radius: 4.5, weight: 1.2, color: panel, fillColor: colorDe(i), fillOpacity: 0.9 });
+        m.bindPopup(() => popup(i), { maxWidth: 340, minWidth: 240, autoPanPadding: [30, 30] });
         grupo.addLayer(m);
       }
       s.capa = grupo;
