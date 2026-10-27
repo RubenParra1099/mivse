@@ -245,7 +245,7 @@ export function Tablero() {
             </div>
           </div>
           <div style={{ position: 'relative', height: 520, margin: '0 16px', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--mapbg)' }}>
-            <MapaTablero d={d} calc={calc} idx={idx} modo={modo} escala={escala} color={colorMapa} selMun={f.mun} selEdo={f.edo} onMunicipio={(m) => toggle('mun', m)} onEstado={(e) => toggle('edo', e)} />
+            <MapaTablero d={d} calc={calc} idx={idx} filtros={f} modo={modo} escala={escala} color={colorMapa} selMun={f.mun} selEdo={f.edo} onMunicipio={(m) => toggle('mun', m)} onEstado={(e) => toggle('edo', e)} />
           </div>
           <div style={{ padding: '10px 16px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {(modo === 'cluster' || modo === 'puntos') && (

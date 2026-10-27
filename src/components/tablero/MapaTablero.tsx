@@ -4,7 +4,7 @@ import type * as Leaflet from 'leaflet';
 import { ESTATUS_INFO, NIVELES, NIVEL_INFO, nombreCarrera, type EstatusLaboral } from '@/lib/catalogos';
 import { cargarLeaflet } from '@/lib/leaflet-cliente';
 import { crearMapaBase, type MapaBase } from '@/lib/mapa-base';
-import type { Calculado } from '@/lib/tablero-calculo';
+import { DIMS, type Calculado, type Filtros } from '@/lib/tablero-calculo';
 import type { DatasetTablero } from '@/lib/tipos';
 import { useTema } from '@/hooks/useTema';
 
@@ -26,9 +26,9 @@ const colorIVE = (v: number) =>
   v >= 76 ? NIVEL_INFO.embajador.color : v >= 58 ? NIVEL_INFO.activo.color : v >= 30 ? NIVEL_INFO.ocasional.color : NIVEL_INFO.desconectado.color;
 
 export function MapaTablero({
-  d, calc, idx, modo, escala, color, selMun, selEdo, onMunicipio, onEstado,
+  d, calc, idx, filtros, modo, escala, color, selMun, selEdo, onMunicipio, onEstado,
 }: {
-  d: DatasetTablero; calc: Calculado; idx: number[]; modo: ModoMapa; escala: EscalaMapa; color: ColorMapa;
+  d: DatasetTablero; calc: Calculado; idx: number[]; filtros: Filtros; modo: ModoMapa; escala: EscalaMapa; color: ColorMapa;
   selMun: number[]; selEdo: number[]; onMunicipio: (m: number) => void; onEstado: (e: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
@@ -72,6 +72,28 @@ export function MapaTablero({
   useEffect(() => {
     dibujar();
   }, [idx, modo, color, calc, selMun, selEdo]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Al cambiar los filtros, acercar el mapa a los egresados filtrados; sin filtros, volver a la escala elegida
+  const filtrosPrevios = useRef(filtros);
+  useEffect(() => {
+    if (filtrosPrevios.current === filtros) return;
+    filtrosPrevios.current = filtros;
+    const s = st.current;
+    if (!s) return;
+    if (!DIMS.some((k) => filtros[k].length)) {
+      s.base.map.flyToBounds(ESCALAS[escala], { duration: 0.9 });
+      return;
+    }
+    const { lat, lng } = d.col;
+    let sur = 90, norte = -90, oeste = 180, este = -180;
+    for (const i of idx) {
+      if (lat[i] == null) continue;
+      sur = Math.min(sur, lat[i]!); norte = Math.max(norte, lat[i]!);
+      oeste = Math.min(oeste, lng[i]!); este = Math.max(este, lng[i]!);
+    }
+    if (sur > norte) return;
+    s.base.map.flyToBounds([[sur, oeste], [norte, este]], { padding: [40, 40], maxZoom: 15, duration: 0.9 });
+  }, [filtros]); // eslint-disable-line react-hooks/exhaustive-deps
 
   function dibujar() {
     const s = st.current;
