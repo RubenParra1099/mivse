@@ -29,6 +29,15 @@ export function Tablero() {
   const [colorMapa, setColorMapa] = useState<ColorMapa>('nivel');
   const [pagina, setPagina] = useState(1);
   const [orden, setOrden] = useState<'desc' | 'asc'>('desc');
+  // Pantallas de celular: algunas gráficas cambian de disposición (leyendas abajo, matriz desplazable)
+  const [estrecho, setEstrecho] = useState(false);
+  useEffect(() => {
+    const mq = window.matchMedia('(max-width: 760px)');
+    const f = () => setEstrecho(mq.matches);
+    f();
+    mq.addEventListener('change', f);
+    return () => mq.removeEventListener('change', f);
+  }, []);
 
   const cargar = useCallback(() => {
     setCargando(true);
@@ -166,7 +175,7 @@ export function Tablero() {
   const resumenFiltros = DIMS.filter((k) => f[k].length).map((k) => `${NOMBRE_DIM[k]}: ${f[k].map((v) => etiquetaDe(k, v)).join(', ')}`).join(' · ') || 'Todo el censo';
 
   return (
-    <div style={{ padding: '18px 20px 40px', display: 'grid', gap: 16 }}>
+    <div className="tab-raiz">
       {/* Encabezado */}
       <header style={{ display: 'flex', alignItems: 'flex-end', gap: 16, flexWrap: 'wrap' }}>
         <div style={{ flex: 1, minWidth: 280 }}>
@@ -178,7 +187,7 @@ export function Tablero() {
           </div>
           <div className="solo-print" style={{ marginTop: 4, fontSize: 12 }}>Filtros: {resumenFiltros} {pesosModificados && '· Pesos IVE simulados'}</div>
         </div>
-        <div className="no-print" style={{ display: 'flex', gap: 8 }}>
+        <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={cargar} disabled={cargando}><Icono n="reset" s={15} /> {cargando ? 'Actualizando…' : 'Actualizar'}</button>
           <button className="btn" onClick={exportarCSV}><Icono n="descarga" s={15} /> CSV</button>
           <button className="btn primary" onClick={() => window.print()}><Icono n="pdf" s={15} /> Exportar PDF</button>
@@ -186,7 +195,7 @@ export function Tablero() {
       </header>
 
       {/* Filtros de segmentación cruzada */}
-      <div className="panel no-print" style={{ padding: '10px 12px', display: 'flex', gap: 8, alignItems: 'center', flexWrap: 'wrap', position: 'sticky', top: 8, zIndex: 900 }}>
+      <div className="panel no-print tab-filtros">
         <span className="muted" style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12, fontWeight: 700, marginRight: 4 }}><Icono n="filtro" s={15} /> Filtros</span>
         <Desplegable titulo="Generación" opciones={opciones.gen} sel={f.gen} onCambio={(v) => setF({ ...f, gen: v })} />
         <Desplegable titulo="Carrera" opciones={opciones.car} sel={f.car} onCambio={(v) => setF({ ...f, car: v })} />
@@ -206,8 +215,8 @@ export function Tablero() {
       </div>
 
       {/* IVE + semáforos de metas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(min(100%, 400px), 1.5fr) repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
-        <section className="panel" style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
+      <div className="tab-kpis">
+        <section className="panel tab-ive" style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
           <div aria-hidden style={{ position: 'absolute', inset: 0, background: `radial-gradient(400px 180px at 0% 100%, color-mix(in srgb, ${colorNivel(kpi.ive)} 18%, transparent), transparent)` }} />
           <div style={{ position: 'relative', flexShrink: 0 }}><MedidorIVE valor={kpi.ive} tam={128} etiqueta="IVE PROM." /></div>
           <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
@@ -233,7 +242,7 @@ export function Tablero() {
       </div>
 
       {/* Mapa geoespacial (mismo estilo que la plataforma de vialidad) */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) 320px', gap: 12 }}>
+      <div className="tab-mapa">
         <section className="panel" style={{ display: 'flex', flexDirection: 'column' }}>
           <div className="panel-h no-print" style={{ flexWrap: 'wrap', paddingBottom: 12 }}>
             <div>
@@ -253,7 +262,7 @@ export function Tablero() {
               </div>
             </div>
           </div>
-          <div style={{ position: 'relative', height: 520, margin: '0 16px', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--mapbg)' }}>
+          <div className="tab-mapa-lienzo">
             <MapaTablero d={d} calc={calc} idx={idx} filtros={f} modo={modo} escala={escala} color={colorMapa} selMun={f.mun} selEdo={f.edo} onMunicipio={(m) => toggle('mun', m)} onEstado={(e) => toggle('edo', e)} />
             <BotonPantallaCompleta href={urlMapaCompleto({ modo, escala, color: colorMapa, filtros: f, pesos: pesosModificados ? pesos : null })} />
           </div>
@@ -274,7 +283,7 @@ export function Tablero() {
           </div>
         </section>
 
-        <section className="panel" style={{ display: 'flex', flexDirection: 'column', height: 642 }}>
+        <section className="panel tab-territorio">
           <div className="panel-h"><h3>Distribución territorial</h3><span className="sub">clic para filtrar</span></div>
           <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: 8, padding: '12px 16px 4px' }}>
             <MiniDato etiqueta="Con coordenada" valor={kpi.n ? `${((kpi.conGeo / kpi.n) * 100).toFixed(0)}%` : '—'} />
@@ -301,7 +310,7 @@ export function Tablero() {
       </div>
 
       {/* Gráficas analíticas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(420px, 1fr))', gap: 12 }}>
+      <div className="tab-graficas">
         <Panel titulo="IVE promedio por carrera" sub="clic para filtrar">
           <Grafica
             alto={Math.max(300, porCarrera.length * 24)}
@@ -342,9 +351,11 @@ export function Tablero() {
         </Panel>
 
         <Panel titulo="Matriz de vinculación · carrera × generación" sub="IVE promedio por celda" ancho>
+          <div style={{ overflowX: 'auto' }}>
+          <div style={{ minWidth: estrecho ? 720 : 0 }}>
           <Grafica
             alto={Math.max(320, porCarrera.length * 26)}
-            deps={[idx, calc, f]}
+            deps={[idx, calc, f, estrecho]}
             onClick={(p) => {
               const [x, y] = (p.data as { value: number[] }).value;
               setF((s) => ({ ...s, gen: [gens[x]], car: [y] }));
@@ -363,6 +374,8 @@ export function Tablero() {
               }],
             })}
           />
+          </div>
+          </div>
         </Panel>
 
         <Panel titulo="Sector laboral" sub="egresados con empleo o emprendimiento">
@@ -400,13 +413,15 @@ export function Tablero() {
         <Panel titulo="Estatus laboral" sub="clic para filtrar">
           <Grafica
             alto={320}
-            deps={[idx, calc, f]}
+            deps={[idx, calc, f, estrecho]}
             onClick={(p) => toggle('lab', porEstatus[p.dataIndex][0])}
             construir={(t) => ({
               tooltip: { trigger: 'item', formatter: '{b}<br><b>{c}</b> egresados ({d}%)' },
-              legend: { orient: 'vertical', right: 10, top: 'middle', textStyle: { color: t.fg, fontSize: 12 }, icon: 'circle', itemWidth: 10 },
+              legend: estrecho
+                ? { orient: 'horizontal', bottom: 0, left: 'center', textStyle: { color: t.fg, fontSize: 11 }, icon: 'circle', itemWidth: 10 }
+                : { orient: 'vertical', right: 10, top: 'middle', textStyle: { color: t.fg, fontSize: 12 }, icon: 'circle', itemWidth: 10 },
               series: [{
-                type: 'pie', radius: ['52%', '78%'], center: ['34%', '50%'], cursor: 'pointer', padAngle: 2, itemStyle: { borderRadius: 6 },
+                type: 'pie', radius: estrecho ? ['42%', '64%'] : ['52%', '78%'], center: estrecho ? ['50%', '42%'] : ['34%', '50%'], cursor: 'pointer', padAngle: 2, itemStyle: { borderRadius: 6 },
                 label: { show: true, position: 'center', formatter: () => `${fmtN(kpi.n)}\negresados`, color: t.fg, fontSize: 15, fontWeight: 800, lineHeight: 20 },
                 data: porEstatus.map(([k, g]) => { const e = d.dict.estatus[k] as EstatusLaboral; return { name: ESTATUS_INFO[e].etiqueta, value: g.n, itemStyle: { color: ESTATUS_INFO[e].color, opacity: atenuar('lab', k) } }; }),
               }],
@@ -448,8 +463,8 @@ export function Tablero() {
             <span className="badge" style={{ '--c': 'var(--ok)' } as React.CSSProperties}>Ponderación oficial</span>
           )}
         </div>
-        <div className="panel-b" style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1.4fr) minmax(280px, 1fr)', gap: 24 }}>
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(240px, 1fr))', gap: '14px 24px' }}>
+        <div className="panel-b tab-motor">
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(min(100%, 240px), 1fr))', gap: '14px 24px' }}>
             {COMPONENTES.map((c) => (
               <div key={c.id}>
                 <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', fontSize: 12.5 }}>
@@ -507,7 +522,7 @@ export function Tablero() {
               </div>
             )}
           </div>
-          <div className="no-print" style={{ display: 'flex', gap: 8 }}>
+          <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
             <div className="seg">
               <button className={orden === 'desc' ? 'on' : ''} onClick={() => setOrden('desc')}>Mayor IVE</button>
               <button className={orden === 'asc' ? 'on' : ''} onClick={() => setOrden('asc')}>Menor IVE</button>
