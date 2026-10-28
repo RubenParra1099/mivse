@@ -45,7 +45,14 @@ export function Tablero() {
   const kpi = useMemo(() => (d && calc ? indicadores(d, calc, idx) : null), [d, calc, idx]);
   useEffect(() => setPagina(1), [f, orden]);
 
-  const toggle = (dim: Dim, v: number) => setF((x) => ({ ...x, [dim]: x[dim].includes(v) ? x[dim].filter((y) => y !== v) : [...x[dim], v] }));
+  // Estado al que pertenece cada municipio, para acotar el filtro de municipios a los estados elegidos
+  const edoDeMun = useMemo(() => {
+    const m = new Map<number, number>();
+    if (d) for (let i = 0; i < d.total; i++) m.set(d.col.mun[i], d.col.edo[i]);
+    return m;
+  }, [d]);
+  const podar = (x: Filtros): Filtros => (x.edo.length ? { ...x, mun: x.mun.filter((m) => x.edo.includes(edoDeMun.get(m)!)) } : x);
+  const toggle = (dim: Dim, v: number) => setF((x) => podar({ ...x, [dim]: x[dim].includes(v) ? x[dim].filter((y) => y !== v) : [...x[dim], v] }));
   const hayFiltros = DIMS.some((k) => f[k].length);
   const pesosModificados = COMPONENTES.some((c) => pesos[c.id] !== PESOS_BASE[c.id]);
 
@@ -82,9 +89,9 @@ export function Tablero() {
       lab: op('lab', undefined, (v) => ESTATUS_INFO[d.dict.estatus[v] as EstatusLaboral].color),
       niv: op('niv', undefined, (v) => NIVEL_INFO[NIVELES[v]].color),
       edo: op('edo', (a, b) => (b.n ?? 0) - (a.n ?? 0)),
-      mun: op('mun', (a, b) => (b.n ?? 0) - (a.n ?? 0)),
+      mun: op('mun', (a, b) => (b.n ?? 0) - (a.n ?? 0)).filter((o) => !f.edo.length || f.edo.includes(edoDeMun.get(o.v)!)),
     };
-  }, [d, calc, sin, etiquetaDe]);
+  }, [d, calc, sin, etiquetaDe, f.edo, edoDeMun]);
 
   if (!d || !calc || !kpi || !opciones) {
     return (
@@ -186,7 +193,7 @@ export function Tablero() {
         <Desplegable titulo="Ingreso" opciones={opciones.ing} sel={f.ing} onCambio={(v) => setF({ ...f, ing: v })} />
         <Desplegable titulo="Estatus laboral" opciones={opciones.lab} sel={f.lab} onCambio={(v) => setF({ ...f, lab: v })} />
         <Desplegable titulo="Nivel" opciones={opciones.niv} sel={f.niv} onCambio={(v) => setF({ ...f, niv: v })} />
-        <Desplegable titulo="Estado" opciones={opciones.edo} sel={f.edo} onCambio={(v) => setF({ ...f, edo: v })} />
+        <Desplegable titulo="Estado" opciones={opciones.edo} sel={f.edo} onCambio={(v) => setF(podar({ ...f, edo: v }))} />
         <Desplegable titulo="Municipio" opciones={opciones.mun} sel={f.mun} onCambio={(v) => setF({ ...f, mun: v })} />
         {hayFiltros && <span style={{ width: 1, height: 22, background: 'var(--line-2)', margin: '0 4px' }} />}
         {DIMS.flatMap((k) => f[k].map((v) => (
