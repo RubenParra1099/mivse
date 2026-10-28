@@ -1,6 +1,7 @@
 'use client';
 // Mapa base estilo plataforma de vialidad: sin teselas, la red vial de la Comarca Lagunera (OpenStreetMap)
 // se dibuja en canvas por jerarquía sobre un fondo sólido, más los contornos estatales para la vista nacional.
+// Las calles de las demás ciudades con egresados (public/data/red-vial/, ver scripts/red-vial.ts) se cargan al acercarse.
 import type * as Leaflet from 'leaflet';
 
 export interface Red {
@@ -12,13 +13,23 @@ interface Estado {
   p: [number, number][][];
 }
 
-let red: Promise<Red> | null = null;
+interface Ciudad {
+  id: string;
+  nombre: string;
+  /** [sur, oeste, norte, este] */
+  bbox: [number, number, number, number];
+}
+
+const redes = new Map<string, Promise<Red>>();
+let indice: Promise<Ciudad[]> | null = null;
 let estados: Promise<Estado[]> | null = null;
 
 /** Formato de red-vial.txt: 1a línea = nombres; luego clase|nombre|x0,y0,dx,dy… (×1e5, deltas). */
-export function cargarRed(): Promise<Red> {
+function cargarArchivoRed(url: string): Promise<Red> {
+  let red = redes.get(url);
   if (!red) {
-    red = fetch('/data/red-vial.txt').then(async (r) => {
+    red = fetch(url).then(async (r) => {
+      if (!r.ok) throw new Error(`${url}: ${r.status}`);
       const raw = (await r.text()).trim();
       const nl = raw.indexOf('\n');
       const nombres: string[] = JSON.parse(raw.slice(0, nl));
@@ -41,8 +52,17 @@ export function cargarRed(): Promise<Red> {
       }
       return { porClase, nombradas };
     });
+    red.catch(() => redes.delete(url)); // permitir reintentar si falló la descarga
+    redes.set(url, red);
   }
   return red;
+}
+
+export const cargarRed = () => cargarArchivoRed('/data/red-vial.txt');
+
+function cargarIndice(): Promise<Ciudad[]> {
+  if (!indice) indice = fetch('/data/red-vial/indice.json').then((r) => (r.ok ? r.json() : [])).catch(() => []);
+  return indice;
 }
 
 export function cargarEstados(): Promise<Estado[]> {
@@ -84,20 +104,42 @@ export async function crearMapaBase(L: typeof Leaflet, el: HTMLElement, opts: { 
   // Red vial por jerarquía, en canvas
   const lineas: [number, Leaflet.Polyline][] = [];
   if (opts.calles !== false) {
-    const R = await cargarRed();
     map.createPane('calles').style.zIndex = '300';
     const rr = L.canvas({ pane: 'calles', padding: 0.4 });
-    for (let c = 4; c >= 0; c--) {
-      lineas.push([c, L.polyline(R.porClase[c], { renderer: rr, pane: 'calles', color: css(`--road${c}`), weight: ANCHO[c], interactive: false, lineCap: 'round', lineJoin: 'round', smoothFactor: 1 }).addTo(map)]);
-    }
-    const escalar = () => {
+    const estilo = (c: number) => {
       const z = map.getZoom();
       const f = z >= 17 ? 2.6 : z >= 16 ? 2 : z >= 15 ? 1.6 : z >= 14 ? 1.25 : 1;
-      for (const [c, pl] of lineas) pl.setStyle({ weight: ANCHO[c] * f, opacity: c === 4 && z < 12.5 ? 0.45 : z < 9 && c > 1 ? 0 : 1 });
+      return { weight: ANCHO[c] * f, opacity: c === 4 && z < 12.5 ? 0.45 : z < 9 && c > 1 ? 0 : 1 };
     };
-    map.on('zoomend', escalar);
-    escalar();
-    nombreDeCalle(L, map, el, R);
+    const nombres = nombreDeCalle(L, map, el);
+    const agregar = (R: Red) => {
+      for (let c = 4; c >= 0; c--) {
+        if (!R.porClase[c].length) continue;
+        lineas.push([c, L.polyline(R.porClase[c], { renderer: rr, pane: 'calles', color: css(`--road${c}`), ...estilo(c), interactive: false, lineCap: 'round', lineJoin: 'round', smoothFactor: 1 }).addTo(map)]);
+      }
+      nombres.agregar(R);
+    };
+    agregar(await cargarRed());
+    map.on('zoomend', () => {
+      for (const [c, pl] of lineas) pl.setStyle(estilo(c));
+    });
+
+    // Ciudades fuera de La Laguna: se descargan la primera vez que entran en la vista a escala de ciudad
+    const cargadas = new Set<string>();
+    let vivo = true;
+    map.on('unload', () => (vivo = false));
+    map.on('moveend', async () => {
+      if (map.getZoom() < 9) return;
+      const b = map.getBounds();
+      for (const c of await cargarIndice()) {
+        if (cargadas.has(c.id) || !b.intersects([[c.bbox[0], c.bbox[1]], [c.bbox[2], c.bbox[3]]])) continue;
+        cargadas.add(c.id);
+        cargarArchivoRed(`/data/red-vial/${c.id}.txt`).then(
+          (R) => vivo && agregar(R),
+          () => cargadas.delete(c.id),
+        );
+      }
+    });
   }
 
   const repintar = () => {
@@ -108,24 +150,26 @@ export async function crearMapaBase(L: typeof Leaflet, el: HTMLElement, opts: { 
 }
 
 /** Al pasar el cursor se resalta la vialidad con nombre más cercana (≤ 7 px) y se muestra su nombre. */
-function nombreDeCalle(L: typeof Leaflet, map: Leaflet.Map, el: HTMLElement, R: Red) {
+function nombreDeCalle(L: typeof Leaflet, map: Leaflet.Map, el: HTMLElement) {
   const G = 0.002;
   const malla = new Map<string, [string, [number, number], [number, number]][]>();
   const porNombre = new Map<string, [number, number][][]>();
-  for (const [, nm, pts] of R.nombradas) {
-    if (!porNombre.has(nm)) porNombre.set(nm, []);
-    porNombre.get(nm)!.push(pts);
-    for (let i = 1; i < pts.length; i++) {
-      const a = pts[i - 1], b = pts[i];
-      for (let x = Math.floor(Math.min(a[1], b[1]) / G); x <= Math.floor(Math.max(a[1], b[1]) / G); x++)
-        for (let y = Math.floor(Math.min(a[0], b[0]) / G); y <= Math.floor(Math.max(a[0], b[0]) / G); y++) {
-          const k = x + ',' + y;
-          let cl = malla.get(k);
-          if (!cl) malla.set(k, (cl = []));
-          cl.push([nm, a, b]);
-        }
+  const agregar = (R: Red) => {
+    for (const [, nm, pts] of R.nombradas) {
+      if (!porNombre.has(nm)) porNombre.set(nm, []);
+      porNombre.get(nm)!.push(pts);
+      for (let i = 1; i < pts.length; i++) {
+        const a = pts[i - 1], b = pts[i];
+        for (let x = Math.floor(Math.min(a[1], b[1]) / G); x <= Math.floor(Math.max(a[1], b[1]) / G); x++)
+          for (let y = Math.floor(Math.min(a[0], b[0]) / G); y <= Math.floor(Math.max(a[0], b[0]) / G); y++) {
+            const k = x + ',' + y;
+            let cl = malla.get(k);
+            if (!cl) malla.set(k, (cl = []));
+            cl.push([nm, a, b]);
+          }
+      }
     }
-  }
+  };
   const dSeg = (la: number, ln: number, a: [number, number], b: [number, number]) => {
     const k = Math.cos((la * Math.PI) / 180) * 111320, m = 110540;
     const px = (ln - a[1]) * k, py = (la - a[0]) * m, bx = (b[1] - a[1]) * k, by = (b[0] - a[0]) * m;
@@ -174,4 +218,5 @@ function nombreDeCalle(L: typeof Leaflet, map: Leaflet.Map, el: HTMLElement, R: 
   el.addEventListener('mousemove', (e) => { ultimo = e; if (!raf) raf = requestAnimationFrame(revisar); });
   el.addEventListener('mouseleave', () => { ultimo = null; ocultar(); });
   map.on('movestart zoomstart popupopen', ocultar);
+  return { agregar };
 }
