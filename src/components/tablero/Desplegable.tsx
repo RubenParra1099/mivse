@@ -17,9 +17,15 @@ export function Desplegable({ titulo, opciones, sel, onCambio }: { titulo: strin
 
   useEffect(() => {
     if (!abierto) return;
-    const f = (e: MouseEvent) => { if (!ref.current?.contains(e.target as Node)) setAbierto(false); };
-    document.addEventListener('mousedown', f);
-    return () => document.removeEventListener('mousedown', f);
+    // pointerdown en captura: el mapa y las gráficas cancelan el evento y el navegador ya no emite mousedown
+    const f = (e: PointerEvent) => { if (!ref.current?.contains(e.target as Node)) setAbierto(false); };
+    const esc = (e: KeyboardEvent) => { if (e.key === 'Escape') setAbierto(false); };
+    document.addEventListener('pointerdown', f, true);
+    document.addEventListener('keydown', esc);
+    return () => {
+      document.removeEventListener('pointerdown', f, true);
+      document.removeEventListener('keydown', esc);
+    };
   }, [abierto]);
 
   const visibles = opciones.filter((o) => o.etiqueta.toLowerCase().includes(q.toLowerCase()));
