@@ -166,11 +166,66 @@ export interface Sugerencia {
   lng: number;
 }
 
-/** Búsqueda de direcciones, con preferencia por la Comarca Lagunera (requiere conexión). */
-export async function buscarDireccion(q: string, signal?: AbortSignal, cerca?: { lat: number; lng: number; r: number }): Promise<Sugerencia[]> {
-  // Prioriza resultados alrededor del municipio elegido (por defecto, la Comarca Lagunera)
-  const d = cerca ? Math.max(cerca.r * 4, 0.12) : 0;
-  const caja = cerca ? `${cerca.lng - d},${cerca.lat + d},${cerca.lng + d},${cerca.lat - d}` : '-103.75,25.85,-103.05,25.35';
+/** Municipio de referencia para orientar la búsqueda. */
+export interface Cerca {
+  nombre: string;
+  estado: string;
+  lat: number;
+  lng: number;
+  r: number;
+}
+
+const PHOTON = 'https://photon.komoot.io/api/';
+
+// Abreviaturas comunes en direcciones mexicanas → nombre como aparece en OpenStreetMap
+const ABREVIATURAS: [RegExp, string][] = [
+  [/\b(?:av|ave|avda)\.?(?=\s)/gi, 'Avenida'],
+  [/\b(?:blvd|blvr|blv|bulevar|bulevard)\.?(?=\s)/gi, 'Boulevard'],
+  [/\bprol\.?(?=\s)/gi, 'Prolongación'],
+  [/\bcarr\.?(?=\s)/gi, 'Carretera'],
+  [/\bcalz\.?(?=\s)/gi, 'Calzada'],
+  [/\bpriv\.?(?=\s)/gi, 'Privada'],
+  [/\bc\.(?=\s)/gi, 'Calle'],
+  [/\bgral\.?(?=\s)/gi, 'General'],
+  [/\bfco\.?(?=\s)/gi, 'Francisco'],
+];
+
+/**
+ * Separa lo que escribe el encuestador ("Av. Morelos #1050 Col. Centro, C.P. 27000, esquina con Falcón")
+ * en calle, número y colonia: el geocodificador exige que coincidan todas las palabras, así que
+ * la colonia, el CP y los cruces se buscan por separado.
+ */
+export function desglosarDireccion(q: string) {
+  let s = ` ${q} `;
+  s = s.replace(/\b(?:esquina|esq\.?|entre|cruce con|casi esquina)\b.*$/i, ' ');
+  s = s.replace(/\b(?:c\.?\s?p\.?|código postal)\s*:?\s*\d{5}\b/gi, ' ').replace(/\b\d{5}\b/g, ' ');
+  let colonia: string | null = null;
+  s = s.replace(/\b(?:col\.?|colonia|fracc\.?|fraccionamiento|barrio|ejido)\s+([^,]+)/i, (_, c: string) => {
+    colonia = c.trim();
+    return ' ';
+  });
+  for (const [re, v] of ABREVIATURAS) s = s.replace(re, v);
+  s = s.replace(/(?:#|\bno\.?\s*|\bnúm\.?\s*|\bnum\.?\s*)(?=\d)/gi, ' ');
+  const numero = s.match(/\b\d+[a-z]?\b/i)?.[0] ?? null;
+  const partes = s.split(',').map((x) => x.trim()).filter(Boolean);
+  const calle = (partes[0] ?? '').replace(/\b\d+[a-z]?\b/gi, ' ').replace(/\s+/g, ' ').trim();
+  const resto = partes.slice(1).join(', ');
+  return { calle, numero, colonia: colonia as string | null, resto };
+}
+
+// Quita el municipio y el estado del texto (con o sin acentos) para no repetirlos en la consulta
+const VOCALES: Record<string, string> = { a: '[aá]', e: '[eé]', i: '[ií]', o: '[oó]', u: '[uúü]', n: '[nñ]' };
+const quitarLugar = (s: string, c?: Cerca) => {
+  if (!c) return s;
+  let x = s;
+  for (const n of [c.nombre, c.estado]) {
+    const patron = normalizar(n).split('').map((ch) => VOCALES[ch] ?? ch.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('');
+    x = x.replace(new RegExp(`(^|[\\s,])${patron}(?=$|[\\s,])`, 'gi'), ' ');
+  }
+  return x.replace(/\s+/g, ' ').replace(/^[\s,]+|[\s,]+$/g, '').trim();
+};
+
+async function nominatim(q: string, signal: AbortSignal | undefined, caja: string): Promise<Sugerencia[]> {
   const url = `${NOMINATIM}/search?format=json&addressdetails=1&limit=6&countrycodes=mx&accept-language=es&viewbox=${caja}&q=${encodeURIComponent(q)}`;
   const r = await fetch(url, { signal });
   if (!r.ok) return [];
@@ -179,6 +234,67 @@ export async function buscarDireccion(q: string, signal?: AbortSignal, cerca?: {
     const partes = x.display_name.split(', ');
     return { titulo: partes.slice(0, 2).join(', '), detalle: partes.slice(2, 5).join(', '), lat: +x.lat, lng: +x.lon };
   });
+}
+
+/** Photon tolera palabras de más o faltantes, y da prioridad a lo cercano al municipio. */
+async function photon(q: string, signal: AbortSignal | undefined, c: { lat: number; lng: number }): Promise<Sugerencia[]> {
+  const r = await fetch(`${PHOTON}?limit=6&lat=${c.lat}&lon=${c.lng}&q=${encodeURIComponent(q)}`, { signal });
+  if (!r.ok) return [];
+  const { features } = (await r.json()) as {
+    features: { geometry: { coordinates: [number, number] }; properties: Record<string, string | undefined> }[];
+  };
+  return features
+    .filter((f) => !f.properties.countrycode || f.properties.countrycode === 'MX')
+    .map((f) => {
+      const p = f.properties;
+      const nombre = [p.name ?? p.street, p.housenumber].filter(Boolean).join(' ');
+      return {
+        titulo: [nombre, p.district ?? p.locality].filter(Boolean).join(', ') || (p.city ?? ''),
+        detalle: [p.city ?? p.county, p.state].filter(Boolean).join(', '),
+        lat: f.geometry.coordinates[1],
+        lng: f.geometry.coordinates[0],
+      };
+    });
+}
+
+/**
+ * Búsqueda de direcciones (requiere conexión). Combina Nominatim y Photon alrededor del municipio
+ * elegido y, si no hay coincidencias, reintenta solo con la calle y después con la colonia.
+ */
+export async function buscarDireccion(q: string, signal?: AbortSignal, cerca?: Cerca): Promise<Sugerencia[]> {
+  const d = cerca ? Math.max(cerca.r * 4, 0.12) : 0;
+  const caja = cerca ? `${cerca.lng - d},${cerca.lat + d},${cerca.lng + d},${cerca.lat - d}` : '-103.75,25.85,-103.05,25.35';
+  const centro = cerca ?? { lat: 25.5428, lng: -103.4068 };
+  const lugar = cerca ? `${cerca.nombre}, ${cerca.estado}` : '';
+  const { calle, numero, colonia, resto } = desglosarDireccion(q);
+  // Con municipio elegido, la consulta estricta usa ese municipio; lo escrito tras la coma (colonia, ciudad) solo orienta a Photon
+  const donde = cerca ? lugar : resto;
+  const extra = quitarLugar(resto, cerca);
+  const calleBase = quitarLugar(calle, cerca) || calle;
+
+  const intentos: [string, string][] = [];
+  if (calleBase) {
+    intentos.push([[calleBase, numero].filter(Boolean).join(' ') + (donde ? `, ${donde}` : ''), [calleBase, numero, colonia ?? extra, lugar].filter(Boolean).join(' ')]);
+    if (numero || colonia) intentos.push([`${calleBase}${donde ? `, ${donde}` : ''}`, [calleBase, lugar].filter(Boolean).join(' ')]);
+  }
+  if (colonia) intentos.push([`${colonia}${donde ? `, ${donde}` : ''}`, [colonia, lugar].filter(Boolean).join(' ')]);
+  if (!intentos.length) intentos.push([q, q]);
+
+  for (const [qn, qp] of intentos) {
+    const [a, b] = await Promise.all([
+      nominatim(qn, signal, caja).catch((e) => { if (signal?.aborted) throw e; return []; }),
+      photon(qp, signal, centro).catch((e) => { if (signal?.aborted) throw e; return []; }),
+    ]);
+    // Primero lo que cae cerca del municipio; sin duplicados (misma calle a < ~50 m)
+    const lejos = (s: Sugerencia) => Math.hypot(s.lat - centro.lat, s.lng - centro.lng) > Math.max(d, 0.4);
+    const out: Sugerencia[] = [];
+    for (const s of [...a, ...b].sort((x, y) => Number(lejos(x)) - Number(lejos(y)))) {
+      if (out.some((o) => Math.abs(o.lat - s.lat) < 0.0005 && Math.abs(o.lng - s.lng) < 0.0005)) continue;
+      out.push(s);
+    }
+    if (out.length) return out.slice(0, 8);
+  }
+  return [];
 }
 
 /** Lectura del GPS: se queda con la lectura más precisa durante unos segundos. */

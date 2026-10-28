@@ -53,7 +53,7 @@ export function Captura() {
   // Municipio elegido: centra el mapa y orienta la búsqueda de direcciones
   const munSel = useMemo(() => {
     const m = MUNICIPIOS.find((x) => x.nombre === f.municipio) ?? MUNICIPIOS[0];
-    return { lat: m.lat, lng: m.lng, r: m.r };
+    return { nombre: m.nombre, estado: m.estado, lat: m.lat, lng: m.lng, r: m.r };
   }, [f.municipio]);
   const [toast, setToast] = useState<string | null>(null);
   const [enfoque, setEnfoque] = useState(0);
@@ -173,12 +173,19 @@ export function Captura() {
 
   const [qDir, setQDir] = useState('');
   const [sugs, setSugs] = useState<Sugerencia[]>([]);
-  useEffect(() => {
-    if (qDir.trim().length < 4 || !enLinea) return setSugs([]);
-    const ac = new AbortController();
-    const t = setTimeout(() => buscarDireccion(qDir, ac.signal, munSel).then(setSugs).catch(() => {}), 450);
-    return () => { clearTimeout(t); ac.abort(); };
-  }, [qDir, enLinea, munSel]);
+  const [estadoDir, setEstadoDir] = useState<'listo' | 'buscando' | 'vacio' | 'error'>('listo');
+  const busquedaDir = useRef<AbortController | null>(null);
+  // Búsqueda al pulsar Enter o "Buscar" (los servicios de mapas no permiten consultar en cada tecla)
+  const buscarDir = () => {
+    if (qDir.trim().length < 3 || !enLinea) return;
+    busquedaDir.current?.abort();
+    const ac = (busquedaDir.current = new AbortController());
+    setEstadoDir('buscando');
+    setSugs([]);
+    buscarDireccion(qDir, ac.signal, munSel)
+      .then((r) => { setSugs(r); setEstadoDir(r.length ? 'listo' : 'vacio'); })
+      .catch(() => { if (!ac.signal.aborted) setEstadoDir('error'); });
+  };
 
   // ── Egresado: buscar expediente existente o alta nueva ──
   const [q, setQ] = useState('');
@@ -393,8 +400,14 @@ export function Captura() {
                     </button>
                     <div style={{ position: 'relative', flex: '2 1 260px' }}>
                       <span style={{ position: 'absolute', left: 12, top: 13, color: 'var(--muted)' }}><Icono n="pin" s={17} /></span>
-                      <input className="input" style={{ paddingLeft: 38, height: 46 }} value={qDir} onChange={(e) => setQDir(e.target.value)}
-                        placeholder={enLinea ? 'Buscar dirección (ej. Av. Morelos 1050, Torreón)' : 'Búsqueda de direcciones sin conexión no disponible'} disabled={!enLinea} />
+                      <form onSubmit={(e) => { e.preventDefault(); buscarDir(); }} style={{ display: 'flex', gap: 6 }}>
+                        <input className="input" type="search" enterKeyHint="search" style={{ paddingLeft: 38, height: 46, flex: 1, minWidth: 0 }} value={qDir}
+                          onChange={(e) => { setQDir(e.target.value); setSugs([]); setEstadoDir('listo'); }}
+                          placeholder={enLinea ? `Calle y número (ej. Av. Morelos 1050) en ${f.municipio}` : 'Búsqueda de direcciones sin conexión no disponible'} disabled={!enLinea} />
+                        <button type="submit" className="btn" style={{ height: 46 }} disabled={!enLinea || qDir.trim().length < 3 || estadoDir === 'buscando'}>
+                          {estadoDir === 'buscando' ? 'Buscando…' : 'Buscar'}
+                        </button>
+                      </form>
                       {sugs.length > 0 && (
                         <div className="cap-lista flotante">
                           {sugs.map((s, i) => (
@@ -402,6 +415,15 @@ export function Captura() {
                               <div style={{ minWidth: 0 }}><b>{s.titulo}</b><div className="muted" style={{ fontSize: 12 }}>{s.detalle}</div></div>
                             </button>
                           ))}
+                          <div className="muted" style={{ fontSize: 11.5, padding: '8px 12px' }}>Los números de casa casi nunca están en el mapa: elige la calle y arrastra el pin a la casa.</div>
+                        </div>
+                      )}
+                      {(estadoDir === 'vacio' || estadoDir === 'error') && (
+                        <div className="cap-alerta" style={{ marginTop: 6 }}>
+                          <Icono n="info" s={16} />
+                          {estadoDir === 'vacio'
+                            ? <span>No se encontró «{qDir}» en {f.municipio}. Prueba solo con el nombre de la calle o de la colonia, revisa el municipio elegido, o toca el mapa para poner el pin.</span>
+                            : <span>El servicio de búsqueda no respondió. Intenta de nuevo en unos segundos o coloca el pin tocando el mapa.</span>}
                         </div>
                       )}
                     </div>
