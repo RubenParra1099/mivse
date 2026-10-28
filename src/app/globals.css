@@ -227,14 +227,14 @@ div.campo { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; 
 .btn.pulsando { animation: gpspulso 1.4s infinite; }
 @keyframes gpspulso { 0% { box-shadow: 0 0 0 0 color-mix(in srgb, var(--accent) 55%, transparent); } 70% { box-shadow: 0 0 0 12px transparent; } 100% { box-shadow: 0 0 0 0 transparent; } }
 .cap-mapa { position: relative; isolation: isolate; height: 360px; border-radius: 14px; overflow: hidden; border: 1px solid var(--line); }
-.cap-coord { position: absolute; z-index: 600; top: 10px; left: 10px; right: 56px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; pointer-events: none; }
+.cap-coord { position: absolute; z-index: 600; top: 10px; left: 52px; right: 56px; display: flex; gap: 10px; flex-wrap: wrap; align-items: center; pointer-events: none; }
 .cap-coord > * { background: color-mix(in oklab, var(--panel) 90%, transparent); border: 1px solid var(--line-2); border-radius: 9px; padding: 4px 9px; font-size: 12px; backdrop-filter: blur(6px); }
 .cap-detectado { display: flex; gap: 9px; align-items: flex-start; padding: 10px 12px; border-radius: 11px; font-size: 13px; background: var(--accent-soft); color: var(--fg); }
 .cap-detectado svg { color: var(--accent); flex: none; margin-top: 1px; }
 .cap-alerta { display: flex; gap: 8px; align-items: center; padding: 9px 12px; border-radius: 11px; font-size: 12.5px; background: color-mix(in srgb, var(--warn) 14%, transparent); }
 .pin-campo span { position: absolute; left: 3px; top: 0; width: 28px; height: 28px; border-radius: 50% 50% 50% 0; transform: rotate(-45deg); background: linear-gradient(135deg, var(--accent), var(--accent-2)); border: 3px solid #fff; box-shadow: 0 6px 16px rgba(0, 0, 0, .45); }
 .pin-campo span::after { content: ''; position: absolute; inset: 7px; border-radius: 50%; background: #fff; }
-.pin-campo::after { content: ''; position: absolute; left: 12px; bottom: 0; width: 10px; height: 4px; border-radius: 50%; background: rgba(0, 0, 0, .35); }
+.pin-campo::after { content: ''; position: absolute; left: 12px; top: 32px; width: 10px; height: 4px; border-radius: 50%; background: rgba(0, 0, 0, .35); }
 .chip.grande { height: 36px; padding: 0 13px; font-size: 12.5px; }
 .cap-fila { display: flex; justify-content: space-between; align-items: center; gap: 12px; flex-wrap: wrap; font-size: 13px; }
 .cap-nps { display: grid; grid-template-columns: repeat(11, 1fr); gap: 4px; }
@@ -378,3 +378,8 @@ div.campo { display: flex; flex-direction: column; gap: 5px; font-size: 11.5px; 
   .exp-encabezado > div:nth-child(2) { display: none !important; } /* avatar: el nombre gana espacio */
   .exp-encabezado h2 { font-size: 18px !important; }
 }
+
+/* Selector Mapa / Satélite del mapa de captura */
+.cap-capas { position: absolute; z-index: 1000; left: 10px; bottom: 30px; box-shadow: 0 2px 8px rgba(0, 0, 0, .3); }
+.cap-capas button { height: 30px; padding: 0 12px; }
+.cap-mapa .leaflet-container { cursor: crosshair; }

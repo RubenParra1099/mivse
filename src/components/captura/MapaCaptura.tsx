@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type * as Leaflet from 'leaflet';
 import { cargarLeaflet } from '@/lib/leaflet-cliente';
 import { crearMapaBase, type MapaBase } from '@/lib/mapa-base';
@@ -40,9 +40,28 @@ export function MapaCaptura({
   const st = useRef<{ L: typeof Leaflet; base: MapaBase; pin: Leaflet.Marker; circulo: Leaflet.Circle; capas: Leaflet.LayerGroup } | null>(null);
   const onP = useRef(onPunto);
   onP.current = onPunto;
-  const props = useRef({ punto, precision, puntos, municipio });
-  props.current = { punto, precision, puntos, municipio };
+  const props = useRef({ punto, precision, puntos, municipio, satelite: false });
   const tema = useTema();
+  // Vista satelital para ver casas y lotes y colocar el pin con precisión (se recuerda en el dispositivo)
+  const [satelite, setSatelite] = useState(() => {
+    try { return localStorage.getItem('mivse.satelite') === '1'; } catch { return false; }
+  });
+  const sat = useRef<Leaflet.TileLayer | null>(null);
+
+  props.current = { punto, precision, puntos, municipio, satelite };
+
+  // Con satélite, la red vial se atenúa y los contornos estatales se ocultan para no tapar las casas
+  const aplicarSatelite = (on: boolean) => {
+    const s = st.current;
+    if (!s || !sat.current) return;
+    const map = s.base.map;
+    if (on) sat.current.addTo(map);
+    else sat.current.remove();
+    const calles = map.getPane('calles');
+    const estados = map.getPane('estados');
+    if (calles) calles.style.opacity = on ? '0.35' : '';
+    if (estados) estados.style.display = on ? 'none' : '';
+  };
 
   const pinta = () => {
     const s = st.current;
@@ -84,7 +103,8 @@ export function MapaCaptura({
         draggable: true,
         autoPan: true,
         zIndexOffset: 1000,
-        icon: L.divIcon({ className: 'pin-campo', html: '<span></span>', iconSize: [34, 44], iconAnchor: [17, 40] }),
+        // La punta del pin (vértice inferior de la gota) cae exactamente en (17, 34)
+        icon: L.divIcon({ className: 'pin-campo', html: '<span></span>', iconSize: [34, 44], iconAnchor: [17, 34] }),
       });
       pin.on('dragend', () => {
         const ll = pin.getLatLng();
@@ -92,7 +112,11 @@ export function MapaCaptura({
       });
       const circulo = L.circle([0, 0], { radius: 0, color: acento(), weight: 1.5, fillColor: acento(), fillOpacity: 0.12, interactive: false });
       base.map.on('click', (e: Leaflet.LeafletMouseEvent) => onP.current(e.latlng.lat, e.latlng.lng));
+      sat.current = L.tileLayer('https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', {
+        maxZoom: 19, maxNativeZoom: 19, attribution: 'Imágenes © Esri, Maxar, Earthstar Geographics',
+      });
       st.current = { L, base, pin, circulo, capas: L.layerGroup().addTo(base.map) };
+      aplicarSatelite(props.current.satelite);
       pinta();
     })();
     return () => {
@@ -108,8 +132,13 @@ export function MapaCaptura({
   useEffect(() => {
     const s = st.current;
     const p = props.current.punto;
-    if (s && p && enfoque) s.base.map.flyTo([p.lat, p.lng], Math.max(s.base.map.getZoom(), 17), { duration: 0.6 });
+    if (s && p && enfoque) s.base.map.flyTo([p.lat, p.lng], Math.max(s.base.map.getZoom(), 18), { duration: 0.6 });
   }, [enfoque]);
+
+  useEffect(() => {
+    aplicarSatelite(satelite);
+    try { localStorage.setItem('mivse.satelite', satelite ? '1' : '0'); } catch {}
+  }, [satelite]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Al elegir un municipio, volar a él para colocar el pin ahí
   useEffect(() => {
@@ -121,5 +150,13 @@ export function MapaCaptura({
     st.current?.circulo.setStyle({ color: acento(), fillColor: acento() });
   }, [tema]);
 
-  return <div ref={ref} style={{ position: 'absolute', inset: 0, background: 'var(--mapbg)' }} />;
+  return (
+    <>
+      <div ref={ref} style={{ position: 'absolute', inset: 0, background: 'var(--mapbg)', cursor: 'crosshair' }} />
+      <div className="seg cap-capas" role="group" aria-label="Tipo de mapa">
+        <button type="button" className={satelite ? '' : 'on'} onClick={() => setSatelite(false)}>Mapa</button>
+        <button type="button" className={satelite ? 'on' : ''} onClick={() => setSatelite(true)}>Satélite</button>
+      </div>
+    </>
+  );
 }
