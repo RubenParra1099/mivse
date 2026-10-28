@@ -154,7 +154,7 @@ export function Expediente({ exp, onLlamar, onWhatsApp }: { exp: ExpedienteCompl
           <div className="panel-b">
             {e.lat != null && e.lng != null ? (
               <>
-                <MiniMapa lat={e.lat} lng={e.lng} color={color} />
+                <MiniMapa lat={e.lat} lng={e.lng} color={color} titulo={nombre} />
                 {e.domicilio && (
                   <div style={{ fontSize: 12.5, marginTop: 8, fontWeight: 600 }}>
                     {e.domicilio}{e.colonia ? `, Col. ${e.colonia}` : ''}

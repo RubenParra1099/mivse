@@ -13,6 +13,7 @@ const P: Record<string, string> = {
   x: 'M6 6l12 12M18 6 6 18',
   check: 'M4 12.5 9 17.5 20 6.5',
   reloj: 'M12 7v5l3 2m6-2a9 9 0 1 1-18 0 9 9 0 0 1 18 0',
+  expandir: 'M14 4h6v6m0-6-7 7M10 20H4v-6m0 6 7-7',
   mapa: 'M9 4 3 6v14l6-2 6 2 6-2V4l-6 2zm0 0v14m6-12v14',
   capas: 'm12 3 9 5-9 5-9-5zm-9 9 9 5 9-5M3 16l9 5 9-5',
   filtro: 'M3 5h18l-7 8v6l-4 2v-8z',

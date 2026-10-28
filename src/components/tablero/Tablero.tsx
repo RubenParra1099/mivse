@@ -6,6 +6,7 @@ import { COMPONENTES, METAS, PESOS_BASE, SEMAFORO_COLOR, UMBRALES_NIVEL, compone
 import { DIMS, FILTROS_VACIOS, agrupar, calcularTodo, filtrar, indicadores, type Dim, type Filtros } from '@/lib/tablero-calculo';
 import { fmtN, haceCuanto } from '@/lib/formato';
 import type { DatasetTablero } from '@/lib/tipos';
+import { BotonPantallaCompleta } from '../ui/BotonPantallaCompleta';
 import { Icono } from '../ui/Icono';
 import { MedidorIVE } from '../ui/Nivel';
 import { Desplegable, type OpcionFiltro } from './Desplegable';
@@ -205,10 +206,10 @@ export function Tablero() {
       </div>
 
       {/* IVE + semáforos de metas */}
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(340px, 1.5fr) repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
+      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(min(100%, 400px), 1.5fr) repeat(auto-fit, minmax(180px, 1fr))', gap: 12 }}>
         <section className="panel" style={{ padding: 16, display: 'flex', gap: 16, alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
           <div aria-hidden style={{ position: 'absolute', inset: 0, background: `radial-gradient(400px 180px at 0% 100%, color-mix(in srgb, ${colorNivel(kpi.ive)} 18%, transparent), transparent)` }} />
-          <div style={{ position: 'relative' }}><MedidorIVE valor={kpi.ive} tam={128} etiqueta="IVE PROM." /></div>
+          <div style={{ position: 'relative', flexShrink: 0 }}><MedidorIVE valor={kpi.ive} tam={128} etiqueta="IVE PROM." /></div>
           <div style={{ flex: 1, position: 'relative', minWidth: 0 }}>
             <div className="eyebrow">Índice de Vinculación del Egresado</div>
             <div style={{ display: 'flex', height: 12, borderRadius: 999, overflow: 'hidden', margin: '10px 0 10px', background: 'var(--panel-3)' }}>
@@ -216,12 +217,13 @@ export function Tablero() {
                 <div key={k} title={`${NIVEL_INFO[NIVELES[k]].etiqueta}: ${fmtN(n)}`} style={{ width: `${kpi.n ? (n / kpi.n) * 100 : 0}%`, background: NIVEL_INFO[NIVELES[k]].color, transition: 'width .5s' }} />
               ))}
             </div>
-            <div style={{ display: 'grid', gridTemplateColumns: '1fr 1fr', gap: '4px 12px' }}>
+            <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
               {kpi.niveles.map((n, k) => (
-                <button key={k} onClick={() => toggle('niv', k)} style={{ display: 'flex', alignItems: 'center', gap: 7, background: 'none', border: 0, padding: '2px 0', cursor: 'pointer', textAlign: 'left', opacity: atenuar('niv', k) }}>
-                  <span className="dot" style={{ '--c': NIVEL_INFO[NIVELES[k]].color } as React.CSSProperties} />
-                  <span style={{ fontSize: 12, flex: 1 }}>{NIVEL_INFO[NIVELES[k]].etiqueta}</span>
-                  <b className="num" style={{ fontSize: 12.5 }}>{kpi.n ? ((n / kpi.n) * 100).toFixed(0) : 0}%</b>
+                <button key={k} onClick={() => toggle('niv', k)} title={NIVEL_INFO[NIVELES[k]].desc} style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none', border: 0, padding: '3px 0', cursor: 'pointer', textAlign: 'left', color: 'inherit', opacity: atenuar('niv', k) }}>
+                  <span className="dot" style={{ '--c': NIVEL_INFO[NIVELES[k]].color, flexShrink: 0 } as React.CSSProperties} />
+                  <span style={{ fontSize: 12.5, flex: 1, whiteSpace: 'nowrap' }}>{NIVEL_INFO[NIVELES[k]].etiqueta}</span>
+                  <span className="num muted" style={{ fontSize: 11.5 }}>{fmtN(n)}</span>
+                  <b className="num" style={{ fontSize: 12.5, minWidth: 36, textAlign: 'right' }}>{kpi.n ? ((n / kpi.n) * 100).toFixed(0) : 0}%</b>
                 </button>
               ))}
             </div>
@@ -253,6 +255,7 @@ export function Tablero() {
           </div>
           <div style={{ position: 'relative', height: 520, margin: '0 16px', borderRadius: 12, overflow: 'hidden', border: '1px solid var(--line)', background: 'var(--mapbg)' }}>
             <MapaTablero d={d} calc={calc} idx={idx} filtros={f} modo={modo} escala={escala} color={colorMapa} selMun={f.mun} selEdo={f.edo} onMunicipio={(m) => toggle('mun', m)} onEstado={(e) => toggle('edo', e)} />
+            <BotonPantallaCompleta href={urlMapaCompleto({ modo, escala, color: colorMapa, filtros: f, pesos: pesosModificados ? pesos : null })} />
           </div>
           <div style={{ padding: '10px 16px 14px', display: 'flex', gap: 10, alignItems: 'center', flexWrap: 'wrap' }}>
             {(modo === 'cluster' || modo === 'puntos') && (
@@ -611,7 +614,7 @@ function MiniDato({ etiqueta, valor, color }: { etiqueta: string; valor: string;
   );
 }
 
-function Leyenda({ d, kpi, modo, color, f, toggle }: { d: DatasetTablero; kpi: { niveles: number[] }; modo: ModoMapa; color: ColorMapa; f: Filtros; toggle: (dim: Dim, v: number) => void }) {
+export function Leyenda({ d, kpi, modo, color, f, toggle }: { d: DatasetTablero; kpi: { niveles: number[] }; modo: ModoMapa; color: ColorMapa; f: Filtros; toggle: (dim: Dim, v: number) => void }) {
   if (modo === 'calor') {
     return (
       <div className="mlegend">
@@ -655,4 +658,13 @@ function Leyenda({ d, kpi, modo, color, f, toggle }: { d: DatasetTablero; kpi: {
       ))}
     </div>
   );
+}
+
+/** URL del mapa del tablero en pantalla completa (otra pestaña), conservando vista, filtros y ponderación. */
+function urlMapaCompleto({ modo, escala, color, filtros, pesos }: { modo: ModoMapa; escala: EscalaMapa; color: ColorMapa; filtros: Filtros; pesos: Pesos | null }) {
+  const q = new URLSearchParams({ tipo: 'tablero', modo, escala, color });
+  const activos = Object.fromEntries(DIMS.filter((k) => filtros[k].length).map((k) => [k, filtros[k]]));
+  if (Object.keys(activos).length) q.set('f', JSON.stringify(activos));
+  if (pesos) q.set('p', JSON.stringify(pesos));
+  return `/mapa?${q}`;
 }

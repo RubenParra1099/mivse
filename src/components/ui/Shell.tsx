@@ -19,6 +19,8 @@ export function Shell({ children }: { children: React.ReactNode }) {
     document.documentElement.dataset.theme = t;
     try { localStorage.setItem('mivse.tema', t); } catch {}
   };
+  // Mapas abiertos en pantalla completa (otra pestaña): sin barra de navegación
+  if (ruta.startsWith('/mapa')) return <main style={{ height: '100dvh' }}>{children}</main>;
   return (
     <div className="shell">
       <nav className="rail" aria-label="Módulos">

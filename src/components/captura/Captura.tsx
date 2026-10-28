@@ -11,6 +11,7 @@ import { fmtN, haceCuanto } from '@/lib/formato';
 import type { CapturaCampo, Egresado, EgresadoResumen } from '@/lib/tipos';
 import type { ResumenCampo } from '@/lib/repo';
 import { Icono } from '../ui/Icono';
+import { BotonPantallaCompleta } from '../ui/BotonPantallaCompleta';
 import { NivelBadge } from '../ui/Nivel';
 import type { PuntoCaptura } from './MapaCaptura';
 
@@ -398,6 +399,9 @@ export function Captura() {
                   <div className="cap-mapa">
                     <MapaCaptura punto={f.lat != null && f.lng != null ? { lat: f.lat, lng: f.lng } : null} precision={f.precision} puntos={puntos} enfoque={enfoque}
                       onPunto={(lat, lng) => { pararGps.current(); setGps({ buscando: false, precision: null, error: null }); ubicar(lat, lng, 'mapa', null); }} />
+                    {f.lat != null && f.lng != null && (
+                      <BotonPantallaCompleta href={`/mapa?${new URLSearchParams({ tipo: 'punto', lat: String(f.lat), lng: String(f.lng), titulo: 'Ubicación capturada' })}`} compacto />
+                    )}
                     <div className="cap-coord">
                       {f.lat != null && f.lng != null ? (
                         <>
