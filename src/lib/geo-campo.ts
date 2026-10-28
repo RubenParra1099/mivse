@@ -167,8 +167,11 @@ export interface Sugerencia {
 }
 
 /** Búsqueda de direcciones, con preferencia por la Comarca Lagunera (requiere conexión). */
-export async function buscarDireccion(q: string, signal?: AbortSignal): Promise<Sugerencia[]> {
-  const url = `${NOMINATIM}/search?format=json&addressdetails=1&limit=6&countrycodes=mx&accept-language=es&viewbox=-103.75,25.85,-103.05,25.35&q=${encodeURIComponent(q)}`;
+export async function buscarDireccion(q: string, signal?: AbortSignal, cerca?: { lat: number; lng: number; r: number }): Promise<Sugerencia[]> {
+  // Prioriza resultados alrededor del municipio elegido (por defecto, la Comarca Lagunera)
+  const d = cerca ? Math.max(cerca.r * 4, 0.12) : 0;
+  const caja = cerca ? `${cerca.lng - d},${cerca.lat + d},${cerca.lng + d},${cerca.lat - d}` : '-103.75,25.85,-103.05,25.35';
+  const url = `${NOMINATIM}/search?format=json&addressdetails=1&limit=6&countrycodes=mx&accept-language=es&viewbox=${caja}&q=${encodeURIComponent(q)}`;
   const r = await fetch(url, { signal });
   if (!r.ok) return [];
   const xs = (await r.json()) as { display_name: string; lat: string; lon: string }[];

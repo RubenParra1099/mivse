@@ -50,8 +50,14 @@ export function Captura() {
   const [base, setBase] = useState<Egresado | null>(null);
   const [nuevo, setNuevo] = useState(false);
   const [errores, setErrores] = useState<Partial<Record<keyof Form, string>>>({});
+  // Municipio elegido: centra el mapa y orienta la búsqueda de direcciones
+  const munSel = useMemo(() => {
+    const m = MUNICIPIOS.find((x) => x.nombre === f.municipio) ?? MUNICIPIOS[0];
+    return { lat: m.lat, lng: m.lng, r: m.r };
+  }, [f.municipio]);
   const [toast, setToast] = useState<string | null>(null);
   const [enfoque, setEnfoque] = useState(0);
+  const [vueloMun, setVueloMun] = useState(0);
   const cola = useCola();
   const enLinea = useEnLinea();
   const [servidor, setServidor] = useState<ResumenCampo | null>(null);
@@ -170,9 +176,9 @@ export function Captura() {
   useEffect(() => {
     if (qDir.trim().length < 4 || !enLinea) return setSugs([]);
     const ac = new AbortController();
-    const t = setTimeout(() => buscarDireccion(qDir, ac.signal).then(setSugs).catch(() => {}), 450);
+    const t = setTimeout(() => buscarDireccion(qDir, ac.signal, munSel).then(setSugs).catch(() => {}), 450);
     return () => { clearTimeout(t); ac.abort(); };
-  }, [qDir, enLinea]);
+  }, [qDir, enLinea, munSel]);
 
   // ── Egresado: buscar expediente existente o alta nueva ──
   const [q, setQ] = useState('');
@@ -374,6 +380,12 @@ export function Captura() {
                   {f.origenUbicacion && <span className="sub">{f.origenUbicacion === 'gps' ? 'GPS del dispositivo' : f.origenUbicacion === 'busqueda' ? 'Búsqueda de dirección' : 'Pin en el mapa'}</span>}
                 </div>
                 <div className="panel-b" style={{ display: 'grid', gap: 12 }}>
+                  <label className="campo">
+                    Municipio <span className="muted" style={{ fontWeight: 500 }}>· el mapa se centra en el municipio elegido</span>
+                    <select className="select" value={f.municipio} onChange={(e) => { set('municipio', e.target.value); setVueloMun((n) => n + 1); }}>
+                      {MUNICIPIOS.map((m) => <option key={m.nombre} value={m.nombre}>{m.nombre}, {m.estado}</option>)}
+                    </select>
+                  </label>
                   <div className="cap-gps">
                     <button className={`btn primary ${gps.buscando ? 'pulsando' : ''}`} style={{ height: 46, flex: '1 1 220px' }} onClick={usarGPS} disabled={gps.buscando && gps.precision == null}>
                       <Icono n="gps" s={18} w={2.2} />
@@ -397,7 +409,7 @@ export function Captura() {
                   {gps.error && <div className="cap-alerta"><Icono n="info" s={16} /> {gps.error}</div>}
 
                   <div className="cap-mapa">
-                    <MapaCaptura punto={f.lat != null && f.lng != null ? { lat: f.lat, lng: f.lng } : null} precision={f.precision} puntos={puntos} enfoque={enfoque}
+                    <MapaCaptura punto={f.lat != null && f.lng != null ? { lat: f.lat, lng: f.lng } : null} precision={f.precision} puntos={puntos} enfoque={enfoque} municipio={{ ...munSel, n: vueloMun }}
                       onPunto={(lat, lng) => { pararGps.current(); setGps({ buscando: false, precision: null, error: null }); ubicar(lat, lng, 'mapa', null); }} />
                     {f.lat != null && f.lng != null && (
                       <BotonPantallaCompleta href={`/mapa?${new URLSearchParams({ tipo: 'punto', lat: String(f.lat), lng: String(f.lng), titulo: 'Ubicación capturada' })}`} compacto />
@@ -428,11 +440,6 @@ export function Captura() {
                     <Campo etq="Calle y número" ancho><input className="input" value={f.domicilio} onChange={(e) => set('domicilio', e.target.value)} placeholder="Ej. Av. Morelos 1050 Pte." /></Campo>
                     <Campo etq="Entre calles" ancho><input className="input" value={f.entreCalles} onChange={(e) => set('entreCalles', e.target.value)} placeholder="Ej. Calle Cepeda y Calle Rodríguez" /></Campo>
                     <Campo etq="Colonia"><input className="input" value={f.colonia} onChange={(e) => set('colonia', e.target.value)} /></Campo>
-                    <Campo etq="Municipio">
-                      <select className="select" value={f.municipio} onChange={(e) => set('municipio', e.target.value)}>
-                        {MUNICIPIOS.map((m) => <option key={m.nombre} value={m.nombre}>{m.nombre}, {m.estado}</option>)}
-                      </select>
-                    </Campo>
                   </div>
                 </div>
               </section>

@@ -13,6 +13,11 @@ export interface PuntoCaptura {
 }
 
 const acento = () => getComputedStyle(document.documentElement).getPropertyValue('--accent').trim();
+/** Encuadre de un municipio a partir de su centro y radio aproximado (grados). */
+const caja = (m: { lat: number; lng: number; r: number }): [[number, number], [number, number]] => {
+  const d = Math.max(m.r * 2, 0.03);
+  return [[m.lat - d, m.lng - d], [m.lat + d, m.lng + d]];
+};
 const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' })[c]!);
 
 /**
@@ -20,21 +25,23 @@ const esc = (s: string) => s.replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&l
  * círculo de precisión del GPS y las capturas del día como referencia.
  */
 export function MapaCaptura({
-  punto, precision, puntos, enfoque, onPunto,
+  punto, precision, puntos, enfoque, municipio, onPunto,
 }: {
   punto: { lat: number; lng: number } | null;
   precision: number | null;
   puntos: PuntoCaptura[];
   /** Cambia para volver a centrar el mapa en el punto. */
   enfoque: number;
+  /** Municipio elegido en el formulario: el mapa se centra en él cuando cambia `n`. */
+  municipio: { lat: number; lng: number; r: number; n: number };
   onPunto: (lat: number, lng: number) => void;
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const st = useRef<{ L: typeof Leaflet; base: MapaBase; pin: Leaflet.Marker; circulo: Leaflet.Circle; capas: Leaflet.LayerGroup } | null>(null);
   const onP = useRef(onPunto);
   onP.current = onPunto;
-  const props = useRef({ punto, precision, puntos });
-  props.current = { punto, precision, puntos };
+  const props = useRef({ punto, precision, puntos, municipio });
+  props.current = { punto, precision, puntos, municipio };
   const tema = useTema();
 
   const pinta = () => {
@@ -70,7 +77,8 @@ export function MapaCaptura({
       const base = await crearMapaBase(L, ref.current);
       if (!vivo) return base.map.remove();
       const p = props.current.punto;
-      base.map.setView(p ? [p.lat, p.lng] : [25.5428, -103.4068], p ? 17 : 13);
+      if (p) base.map.setView([p.lat, p.lng], 17);
+      else base.map.fitBounds(caja(props.current.municipio));
       L.control.scale({ imperial: false, position: 'bottomleft' }).addTo(base.map);
       const pin = L.marker([0, 0], {
         draggable: true,
@@ -102,6 +110,11 @@ export function MapaCaptura({
     const p = props.current.punto;
     if (s && p && enfoque) s.base.map.flyTo([p.lat, p.lng], Math.max(s.base.map.getZoom(), 17), { duration: 0.6 });
   }, [enfoque]);
+
+  // Al elegir un municipio, volar a él para colocar el pin ahí
+  useEffect(() => {
+    if (municipio.n) st.current?.base.map.flyToBounds(caja(municipio), { duration: 0.8 });
+  }, [municipio.n]); // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     st.current?.base.repintar();

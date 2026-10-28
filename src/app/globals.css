@@ -208,6 +208,7 @@ button.lgi:hover { border-color: var(--accent); }
 .captura { padding: 22px 26px 40px; max-width: 1380px; margin: 0 auto; display: grid; gap: 16px; }
 .cap-head { display: flex; justify-content: space-between; align-items: flex-end; gap: 12px; flex-wrap: wrap; }
 .cap-grid { display: grid; grid-template-columns: minmax(0, 1fr) 340px; gap: 16px; align-items: start; }
+.cap-grid > * { min-width: 0; grid-template-columns: minmax(0, 1fr); }
 .cap-grid > aside { position: sticky; top: 16px; }
 .panel-h h3 { display: flex; align-items: center; gap: 9px; }
 .paso { display: inline-grid; place-items: center; width: 22px; height: 22px; border-radius: 7px; font-size: 11.5px; font-weight: 800; color: #fff; background: linear-gradient(135deg, var(--accent), var(--accent-2)); }
