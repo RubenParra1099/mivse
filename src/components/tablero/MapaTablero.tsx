@@ -1,5 +1,5 @@
 'use client';
-import { useEffect, useRef } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import type * as Leaflet from 'leaflet';
 import { ESTATUS_INFO, NIVELES, NIVEL_INFO, nombreCarrera, type EstatusLaboral } from '@/lib/catalogos';
 import { cargarLeaflet } from '@/lib/leaflet-cliente';
@@ -7,6 +7,7 @@ import { crearMapaBase, type MapaBase } from '@/lib/mapa-base';
 import { DIMS, type Calculado, type Filtros } from '@/lib/tablero-calculo';
 import type { DatasetTablero } from '@/lib/tipos';
 import { useTema } from '@/hooks/useTema';
+import { FichaTecnica } from './FichaTecnica';
 
 export type ModoMapa = 'cluster' | 'puntos' | 'calor' | 'burbujas';
 export type EscalaMapa = 'municipal' | 'estatal' | 'nacional';
@@ -34,6 +35,7 @@ export function MapaTablero({
   const ref = useRef<HTMLDivElement>(null);
   const st = useRef<{ L: typeof Leaflet; base: MapaBase; capa: Leaflet.Layer | null; rend: Leaflet.Canvas } | null>(null);
   const tema = useTema();
+  const [ficha, setFicha] = useState<string | null>(null);
   const onMun = useRef(onMunicipio);
   onMun.current = onMunicipio;
   const onEdo = useRef(onEstado);
@@ -124,6 +126,7 @@ export function MapaTablero({
         <dl>${fila('Carrera', nombreCarrera(d.dict.carrera[d.col.car[i]]))}${fila('Municipio', `${d.dict.municipio[d.col.mun[i]]}, ${d.dict.estado[d.col.edo[i]]}`)}${fila('Estatus', lab)}${d.dict.sector[d.col.sec[i]] !== 'Sin dato' ? fila('Sector', d.dict.sector[d.col.sec[i]]) : ''}${d.col.nps[i] >= 0 ? fila('Recomendación', `${d.col.nps[i]}/10`) : ''}</dl>
         <div style="display:grid;gap:6px">
           <button type="button" class="btn sm" data-filtra-mun="${d.col.mun[i]}" style="width:100%">${selMun.includes(d.col.mun[i]) ? 'Quitar filtro de' : 'Filtrar tabla por'} ${esc(d.dict.municipio[d.col.mun[i]])}</button>
+          <button type="button" class="btn sm" data-ficha="${esc(d.col.matricula[i])}" style="width:100%">Ver ficha técnica</button>
           <a href="/callcenter?q=${d.col.matricula[i]}" class="btn sm primary" style="width:100%;color:#fff">Abrir expediente en Call Center</a>
         </div>
       </div>`;
@@ -225,13 +228,25 @@ export function MapaTablero({
     s.capa?.addTo(map);
   }
 
-  // Botón "Filtrar tabla por municipio" dentro de las fichas del mapa
+  // Botones dentro de las fichas del mapa: "Ver ficha técnica" y "Filtrar tabla por municipio"
   const clicFicha = (e: React.MouseEvent) => {
-    const b = (e.target as HTMLElement).closest<HTMLElement>('[data-filtra-mun]');
+    const t = e.target as HTMLElement;
+    const f = t.closest<HTMLElement>('[data-ficha]');
+    if (f) {
+      setFicha(f.dataset.ficha!);
+      st.current?.base.map.closePopup();
+      return;
+    }
+    const b = t.closest<HTMLElement>('[data-filtra-mun]');
     if (!b) return;
     onMun.current(Number(b.dataset.filtraMun));
     st.current?.base.map.closePopup();
   };
 
-  return <div ref={ref} onClick={clicFicha} style={{ position: 'absolute', inset: 0 }} />;
+  return (
+    <>
+      <div ref={ref} onClick={clicFicha} style={{ position: 'absolute', inset: 0 }} />
+      {ficha && <FichaTecnica matricula={ficha} onCerrar={() => setFicha(null)} />}
+    </>
+  );
 }
