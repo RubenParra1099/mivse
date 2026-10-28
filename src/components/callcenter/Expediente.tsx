@@ -33,7 +33,7 @@ export function Expediente({ exp, onLlamar, onWhatsApp }: { exp: ExpedienteCompl
   return (
     <div style={{ display: 'grid', gap: 14 }}>
       {/* Encabezado del expediente */}
-      <section className="panel" style={{ padding: 18, display: 'flex', gap: 18, alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
+      <section className="panel exp-encabezado" style={{ padding: 18, display: 'flex', gap: 18, alignItems: 'center', position: 'relative', overflow: 'hidden' }}>
         <div aria-hidden style={{ position: 'absolute', inset: 0, background: `radial-gradient(600px 160px at 0% 0%, color-mix(in srgb, ${color} 16%, transparent), transparent)` }} />
         <div style={{ width: 64, height: 64, borderRadius: 18, display: 'grid', placeItems: 'center', fontWeight: 800, fontSize: 22, color: '#fff', background: `linear-gradient(135deg, ${color}, color-mix(in srgb, ${color} 50%, #000))`, flex: 'none', position: 'relative' }}>
           {iniciales(`${e.nombre} ${e.apellidoPaterno}`)}
@@ -62,7 +62,7 @@ export function Expediente({ exp, onLlamar, onWhatsApp }: { exp: ExpedienteCompl
             <Icono n="wa" s={16} /> WhatsApp
           </button>
           {menuWa && (
-            <div className="panel" style={{ position: 'absolute', top: 42, left: 0, zIndex: 50, width: 330, padding: 6 }} onMouseLeave={() => setMenuWa(false)}>
+            <div className="panel" style={{ position: 'absolute', top: 42, left: 0, zIndex: 50, width: 'min(330px, calc(100vw - 40px))', padding: 6 }} onMouseLeave={() => setMenuWa(false)}>
               <div className="eyebrow" style={{ padding: '8px 10px 4px' }}>Mensaje institucional</div>
               {PLANTILLAS_WHATSAPP.map((p) => (
                 <a
@@ -87,16 +87,16 @@ export function Expediente({ exp, onLlamar, onWhatsApp }: { exp: ExpedienteCompl
             </div>
           )}
         </div>
-        <a className="btn" href={`mailto:${e.email}`}>
-          <Icono n="mail" s={16} /> {e.email}
+        <a className="btn" href={`mailto:${e.email}`} style={{ maxWidth: '100%', minWidth: 0 }}>
+          <Icono n="mail" s={16} /> <span style={{ overflow: 'hidden', textOverflow: 'ellipsis' }}>{e.email}</span>
         </a>
-        <div style={{ marginLeft: 'auto', display: 'flex', gap: 16, fontSize: 12 }}>
+        <div style={{ marginLeft: 'auto', display: 'flex', gap: '4px 16px', flexWrap: 'wrap', fontSize: 12 }}>
           <span className="muted">Último contacto <b style={{ color: 'var(--fg)' }}>{haceCuanto(e.ultimoContacto)}</b></span>
           <span className="muted">Datos actualizados <b style={{ color: e.ultimaActualizacion && Date.now() - Date.parse(e.ultimaActualizacion) < 365 * DIA ? 'var(--ok)' : 'var(--bad)' }}>{haceCuanto(e.ultimaActualizacion)}</b></span>
         </div>
       </section>
 
-      <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0,1fr) minmax(0,1fr)', gap: 14 }}>
+      <div className="exp-grid">
         {/* Situación laboral */}
         <section className="panel">
           <div className="panel-h"><h3>Situación laboral</h3><Icono n="maletin" s={16} className="muted" /></div>

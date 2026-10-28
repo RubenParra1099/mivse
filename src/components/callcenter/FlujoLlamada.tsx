@@ -241,7 +241,7 @@ export function FlujoLlamada({
       </div>
 
       {/* Pie: vista previa del IVE y guardado */}
-      <div style={{ borderTop: '1px solid var(--line)', padding: '12px 18px 16px', background: 'var(--panel-2)', borderRadius: '0 0 var(--radius) var(--radius)' }}>
+      <div className="flujo-pie" style={{ borderTop: '1px solid var(--line)', padding: '12px 18px 16px', background: 'var(--panel-2)', borderRadius: '0 0 var(--radius) var(--radius)' }}>
         {previo && (
           <div style={{ display: 'flex', alignItems: 'center', gap: 10, marginBottom: 12 }}>
             <div style={{ flex: 1 }}>

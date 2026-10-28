@@ -27,6 +27,8 @@ export function CallCenter() {
   const [seg, setSeg] = useState(0);
   const [guardando, setGuardando] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
+  // Tablet y celular: una sola columna visible a la vez (cola → expediente → registrar)
+  const [vista, setVista] = useState<'cola' | 'expediente' | 'flujo'>('cola');
   const busca = useRef<HTMLInputElement>(null);
   const autoAbrir = useRef<string | null>(null);
 
@@ -90,6 +92,8 @@ export function CallCenter() {
 
   const abrir = useCallback((id: number) => {
     setSel(id);
+    setVista('expediente');
+    window.scrollTo({ top: 0 });
     setInicioLlamada(null);
     setCanal('llamada');
     fetch(`/api/egresados/${id}`).then((r) => r.json()).then(setExp);
@@ -146,33 +150,40 @@ export function CallCenter() {
 
   const h = act?.hoy;
   return (
-    <div style={{ height: '100vh', display: 'grid', gridTemplateRows: 'auto 1fr', minHeight: 640 }}>
+    <div className="cc-raiz">
       {/* Barra superior */}
-      <header style={{ display: 'flex', alignItems: 'center', gap: 18, padding: '14px 20px', borderBottom: '1px solid var(--line)', background: 'color-mix(in srgb, var(--panel) 70%, transparent)', backdropFilter: 'blur(10px)' }}>
+      <header className="cc-header">
         <div>
           <div className="eyebrow">Módulo 2</div>
           <h1 className="titulo">Call Center <span className="grad-text">MIVSE</span></h1>
         </div>
-        <div style={{ display: 'flex', gap: 8, marginLeft: 12 }}>
+        <div className="cc-stats">
           <Stat etiqueta="Llamadas hoy" valor={h?.total} />
           <Stat etiqueta="Efectivas" valor={h?.efectivas} color="var(--accent-2)" />
           <Stat etiqueta="Actualizados" valor={h?.actualizados} color="var(--ok)" />
           <Stat etiqueta="WhatsApp" valor={h?.whatsapp} color="#16a34a" />
         </div>
-        <div style={{ flex: 1, minWidth: 0, overflow: 'hidden' }}>
+        <div className="cc-ticker">
           {act?.llamadas[0] && <Ticker l={act.llamadas[0]} />}
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, fontWeight: 600 }} className="muted">
+        <label className="muted cc-agente">
           <Icono n="usuario" s={16} />
-          <select className="select" style={{ height: 34, width: 170 }} value={agente} onChange={(e) => cambiarAgente(e.target.value)} aria-label="Agente">
+          <select className="select" style={{ height: 34 }} value={agente} onChange={(e) => cambiarAgente(e.target.value)} aria-label="Agente">
             {AGENTES.map((a) => <option key={a}>{a}</option>)}
           </select>
         </label>
       </header>
 
-      <div style={{ display: 'grid', gridTemplateColumns: '350px minmax(0,1fr) 410px', gap: 14, padding: 14, minHeight: 0 }}>
+      {/* Pestañas (solo tablet y celular) */}
+      <nav className="seg cc-pestanas" aria-label="Secciones del Call Center">
+        <button className={vista === 'cola' ? 'on' : ''} onClick={() => setVista('cola')}>{tab === 'busqueda' ? 'Resultados' : 'Cola'} <span className="muted num">{lista.length}</span></button>
+        <button className={vista === 'expediente' ? 'on' : ''} onClick={() => setVista('expediente')}>Expediente</button>
+        <button className={vista === 'flujo' ? 'on' : ''} onClick={() => setVista('flujo')} disabled={!exp}>Registrar{inicioLlamada ? ' ●' : ''}</button>
+      </nav>
+
+      <div className="cc-cuerpo" data-vista={vista}>
         {/* Columna izquierda: buscador + cola (deck view) */}
-        <aside className="panel" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
+        <aside className="panel cc-cola" style={{ display: 'flex', flexDirection: 'column', minHeight: 0 }}>
           <div style={{ padding: 12, borderBottom: '1px solid var(--line)' }}>
             <div style={{ position: 'relative' }}>
               <span style={{ position: 'absolute', left: 11, top: 10 }} className="muted"><Icono n="buscar" s={17} /></span>
@@ -201,13 +212,20 @@ export function CallCenter() {
         </aside>
 
         {/* Centro: expediente único */}
-        <section className="scroll" style={{ minHeight: 0, paddingRight: 2 }}>
+        <section className="scroll cc-expediente" style={{ minHeight: 0, paddingRight: 2 }}>
           {exp && exp.egresado.id === sel ? (
-            <Expediente
-              exp={exp}
-              onLlamar={() => { setCanal('llamada'); setInicioLlamada(Date.now()); setSeg(0); }}
-              onWhatsApp={() => setCanal('whatsapp')}
-            />
+            <>
+              <Expediente
+                exp={exp}
+                onLlamar={() => { setCanal('llamada'); setInicioLlamada(Date.now()); setSeg(0); setVista('flujo'); }}
+                onWhatsApp={() => { setCanal('whatsapp'); setVista('flujo'); }}
+              />
+              {/* Acciones fijas al pie (solo tablet y celular) */}
+              <div className="cc-acciones">
+                <button className="btn" onClick={siguiente}>Siguiente en cola <Icono n="flecha" s={15} /></button>
+                <button className="btn primary" onClick={() => { setVista('flujo'); window.scrollTo({ top: 0 }); }}>Registrar resultado</button>
+              </div>
+            </>
           ) : sel ? (
             <div className="panel vacio">Cargando expediente…</div>
           ) : (
@@ -216,7 +234,7 @@ export function CallCenter() {
         </section>
 
         {/* Derecha: flujo guiado */}
-        <aside className="panel" style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
+        <aside className="panel cc-flujo" style={{ minHeight: 0, display: 'flex', flexDirection: 'column' }}>
           {exp && exp.egresado.id === sel ? (
             <>
               <div style={{ flex: 1, minHeight: 0 }}>
@@ -233,7 +251,7 @@ export function CallCenter() {
       </div>
 
       {exp && (
-        <button className="btn no-print" onClick={siguiente} style={{ position: 'fixed', right: 444, bottom: 26, boxShadow: 'var(--shadow)', zIndex: 20 }}>
+        <button className="btn no-print cc-siguiente" onClick={siguiente}>
           Siguiente en cola <Icono n="flecha" s={15} />
         </button>
       )}
@@ -309,7 +327,7 @@ function Bienvenida({ act }: { act: Actividad | null }) {
           y registra el resultado. El nivel de vinculación se recalcula en el momento.
         </p>
       </section>
-      <div style={{ display: 'grid', gridTemplateColumns: '1.4fr 1fr', gap: 14 }}>
+      <div className="cc-bienvenida">
         <section className="panel">
           <div className="panel-h"><h3>Actividad en vivo</h3><span className="vivo">Actualiza cada 8 s</span></div>
           <div className="panel-b scroll" style={{ maxHeight: 460 }}>
