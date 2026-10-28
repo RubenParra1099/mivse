@@ -63,8 +63,8 @@ async function main() {
 
   for (const m of MUNICIPIOS) {
     if (m.lat >= LAGUNA.s && m.lat <= LAGUNA.n && m.lng >= LAGUNA.w && m.lng <= LAGUNA.e) continue;
-    // Los egresados se generan con dispersión normal r (lat) y 1.15·r (lng): 3σ cubre prácticamente a todos
-    const dLat = Math.max(0.05, 3 * m.r), dLng = Math.max(0.06, 3 * m.r * 1.15);
+    // Los egresados se generan con dispersión normal r (lat) y 1.15·r (lng): 4σ los cubre a todos, más ~2 km de margen para que no queden en la orilla
+    const dLat = Math.max(0.08, 4 * m.r + 0.02), dLng = Math.max(0.09, (4 * m.r + 0.02) * 1.15);
     const bbox: [number, number, number, number] = [+(m.lat - dLat).toFixed(4), +(m.lng - dLng).toFixed(4), +(m.lat + dLat).toFixed(4), +(m.lng + dLng).toFixed(4)];
     const id = slug(m.nombre);
     indice.push({ id, nombre: m.nombre, bbox });
