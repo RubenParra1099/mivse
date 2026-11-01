@@ -123,7 +123,6 @@ export function Captura() {
   // ── Ubicación: GPS, calles detectadas y dirección ──
   const [gps, setGps] = useState<{ buscando: boolean; precision: number | null; error: string | null }>({ buscando: false, precision: null, error: null });
   const [detectado, setDetectado] = useState<{ domicilio: string; entre: string; colonia: string | null } | null>(null);
-  const auto = useRef({ domicilio: '', entreCalles: '', colonia: '' });
   const pararGps = useRef<() => void>(() => {});
   const ultimaUbicacion = useRef(0);
 
@@ -134,20 +133,16 @@ export function Captura() {
     const vigente = () => n === ultimaUbicacion.current; // el pin pudo moverse mientras se consultaba
     setF((x) => ({ ...x, lat, lng, origenUbicacion: origen, precision, municipio: municipioCercano(lat, lng) }));
     setErrores((e) => ({ ...e, lat: undefined }));
-    // Rellena sólo los campos vacíos o que se llenaron automáticamente (respeta lo que escribió el encuestador)
-    const rellenar = (k: 'domicilio' | 'entreCalles' | 'colonia', v: string) =>
-      setF((x) => {
-        if (!v || (x[k] && x[k] !== auto.current[k])) return x;
-        auto.current[k] = v;
-        return { ...x, [k]: v };
-      });
+    // Cada pin reescribe calle, entre calles y colonia con lo que corresponde a su ubicación
+    const escribir = (domicilio: string, entreCalles: string, colonia: string | null) => {
+      setDetectado(domicilio ? { domicilio, entre: entreCalles, colonia } : null);
+      setF((x) => ({ ...x, domicilio, entreCalles, colonia: colonia ?? '' }));
+    };
 
     const c = await callesCercanas(lat, lng).catch(() => ({ calle: null, entre: [] as string[], distancia: null }));
     if (!vigente()) return;
     const local = textoEntreCalles(c.entre);
-    setDetectado(c.calle ? { domicilio: c.calle, entre: local, colonia: null } : null);
-    if (c.calle) rellenar('domicilio', c.calle);
-    rellenar('entreCalles', local);
+    escribir(c.calle ?? '', local, null);
     if (!navigator.onLine) return;
 
     const d = await direccionDe(lat, lng);
@@ -155,11 +150,7 @@ export function Captura() {
     const calle = d?.calle ?? c.calle;
     const entre = (await entreCallesOSM(lat, lng, calle)) || local;
     if (!vigente()) return;
-    const domicilio = calle ? calleYNumero(calle, d?.numero ?? null) : '';
-    setDetectado(domicilio ? { domicilio, entre, colonia: d?.colonia ?? null } : null);
-    rellenar('domicilio', domicilio);
-    rellenar('entreCalles', entre);
-    if (d?.colonia) rellenar('colonia', d.colonia);
+    escribir(calle ? calleYNumero(calle, d?.numero ?? null) : '', entre, d?.colonia ?? null);
     if (d?.municipio) setF((x) => ({ ...x, municipio: d.municipio! }));
   }, []);
 
@@ -222,7 +213,6 @@ export function Captura() {
       if (!r.ok) throw new Error();
       const e: Egresado = await r.json();
       pararGps.current();
-      auto.current = { domicilio: '', entreCalles: '', colonia: '' };
       setBase(e);
       setNuevo(false);
       setF(deEgresado(e));
@@ -238,7 +228,6 @@ export function Captura() {
   };
   const altaNueva = () => {
     pararGps.current();
-    auto.current = { domicilio: '', entreCalles: '', colonia: '' };
     setBase(null);
     setNuevo(true);
     setF({ ...VACIO, nombre: q && !/^\d+$/.test(q.trim()) ? q.trim() : '', matricula: /^\d+$/.test(q.trim()) ? q.trim() : '' });
