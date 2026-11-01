@@ -50,16 +50,14 @@ export function MapaCaptura({
 
   props.current = { punto, precision, puntos, municipio, satelite };
 
-  // Con satélite, la red vial se atenúa y los contornos estatales se ocultan para no tapar las casas
+  // Con satélite, los contornos estatales se ocultan para no tapar las casas
   const aplicarSatelite = (on: boolean) => {
     const s = st.current;
     if (!s || !sat.current) return;
     const map = s.base.map;
     if (on) sat.current.addTo(map);
     else sat.current.remove();
-    const calles = map.getPane('calles');
     const estados = map.getPane('estados');
-    if (calles) calles.style.opacity = on ? '0.35' : '';
     if (estados) estados.style.display = on ? 'none' : '';
   };
 
@@ -93,7 +91,7 @@ export function MapaCaptura({
     (async () => {
       const L = await cargarLeaflet();
       if (!vivo || !ref.current || st.current) return;
-      const base = await crearMapaBase(L, ref.current);
+      const base = await crearMapaBase(L, ref.current, { selector: false }); // tiene su propio selector Mapa / Satélite
       if (!vivo) return base.map.remove();
       const p = props.current.punto;
       if (p) base.map.setView([p.lat, p.lng], 17);

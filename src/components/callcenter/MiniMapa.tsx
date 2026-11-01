@@ -20,7 +20,7 @@ export function MiniMapa({ lat, lng, color, titulo, completo }: { lat: number; l
     (async () => {
       const L = await cargarLeaflet();
       if (!vivo || !ref.current || st.current) return;
-      const base = await crearMapaBase(L, ref.current, { zoomControl: !!completo });
+      const base = await crearMapaBase(L, ref.current, { zoomControl: !!completo, selector: !!completo });
       if (!vivo) return base.map.remove();
       if (completo) L.control.scale({ imperial: false }).addTo(base.map);
       else base.map.scrollWheelZoom.disable();

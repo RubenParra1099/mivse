@@ -143,7 +143,7 @@ export function MapaTablero({
       }
       const max = Math.max(1, ...[...porEdo.values()].map((x) => x.n));
       const cs = getComputedStyle(document.documentElement);
-      const acento = cs.getPropertyValue('--accent').trim(), r1 = cs.getPropertyValue('--road1').trim(), r3 = cs.getPropertyValue('--road3').trim();
+      const acento = cs.getPropertyValue('--accent').trim(), r1 = cs.getPropertyValue('--road1').trim();
       s.base.estadosCapa.eachLayer((ly) => {
         const pl = ly as Leaflet.Polygon & { feature: { properties: { n: string } } };
         const nombre = pl.feature.properties.n;
@@ -153,7 +153,7 @@ export function MapaTablero({
         pl.setStyle(
           elegido
             ? { fillColor: acento, fillOpacity: 0.45, color: acento, weight: 3 }
-            : x ? { fillColor: acento, fillOpacity: 0.12 + 0.5 * Math.sqrt(x.n / max), color: r1, weight: 1.2 } : { fillColor: r3, fillOpacity: 0.55, color: r1, weight: 1.2 },
+            : x ? { fillColor: acento, fillOpacity: 0.12 + 0.5 * Math.sqrt(x.n / max), color: r1, weight: 1.2 } : { fillOpacity: 0, color: r1, weight: 1.2 },
         );
         pl.off('click');
         if (k >= 0) pl.on('click', () => onEdo.current(k));
