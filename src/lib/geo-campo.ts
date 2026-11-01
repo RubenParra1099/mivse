@@ -147,15 +147,82 @@ export async function direccionDe(lat: number, lng: number, signal?: AbortSignal
     const r = await fetch(`${NOMINATIM}/reverse?format=json&lat=${lat}&lon=${lng}&zoom=18&addressdetails=1&accept-language=es`, { signal });
     if (!r.ok) return null;
     const a = (await r.json()).address ?? {};
+    // Mismos campos y prioridad que SIMV Call Center (formatFullMexicanAddress)
     return {
-      calle: a.road ?? a.pedestrian ?? null,
+      calle: a.road || a.pedestrian || a.street || a.footway || a.path || null,
       numero: a.house_number ?? null,
-      colonia: a.neighbourhood ?? a.suburb ?? a.quarter ?? a.residential ?? null,
+      colonia: a.suburb || a.neighbourhood || a.quarter || a.city_district || a.residential || a.subdivision || null,
       municipio: municipioPorNombre(a.city, a.town, a.municipality, a.county, a.village),
       cp: a.postcode ?? null,
     };
   } catch {
     return null;
+  }
+}
+
+/** «Calle #número», como lo escribe SIMV Call Center. */
+export const calleYNumero = (calle: string, numero: string | null) => (numero ? `${calle} #${numero}` : calle);
+
+/** «Entre A y B» o «Esq. con A» a partir de la red vial local (sin conexión). */
+export function textoEntreCalles(entre: string[]): string {
+  return entre.length >= 2 ? `Entre ${entre[0]} y ${entre[1]}` : entre.length ? `Esq. con ${entre[0]}` : '';
+}
+
+const sinTipoVia = (n: string) =>
+  normalizar(n).replace(/^(av\.?|avenida|calle|blvd\.?|boulevard|calz\.?|calzada|prol\.?|prolongacion|cerrada|privada|andador|pasaje|callejon)\s+/i, '').trim();
+function mismaCalle(a: string, b: string) {
+  const x = sinTipoVia(a), y = sinTipoVia(b);
+  if (!x || !y) return false;
+  return x === y || (x.length > 4 && y.length > 4 && (x.includes(y) || y.includes(x)));
+}
+
+/**
+ * Entre calles con el mismo algoritmo de SIMV Call Center: vialidades con nombre de OpenStreetMap a ≤ 130 m del punto
+ * (descontando la calle principal); con dos o más calles (sin privadas/cerradas si hay suficientes) se toman las dos más
+ * cercanas, ordenadas de poniente a oriente o de sur a norte. Requiere conexión.
+ */
+export async function entreCallesOSM(lat: number, lng: number, calle?: string | null, signal?: AbortSignal): Promise<string> {
+  const bbox = [lng - 0.0012, lat - 0.0011, lng + 0.0012, lat + 0.0011].map((v) => v.toFixed(6)).join(',');
+  const ac = new AbortController();
+  const to = setTimeout(() => ac.abort(), 3500);
+  signal?.addEventListener('abort', () => ac.abort());
+  try {
+    const r = await fetch(`https://api.openstreetmap.org/api/0.6/map?bbox=${bbox}`, { signal: ac.signal });
+    if (!r.ok) return '';
+    const xml = await r.text();
+    const nodos = new Map<string, P>();
+    for (const m of xml.matchAll(/<node id="(\d+)"[^>]*lat="([^"]+)"[^>]*lon="([^"]+)"/g)) nodos.set(m[1], [+m[2], +m[3]]);
+
+    const kx = Math.cos((lat * Math.PI) / 180) * 111320;
+    const vias = new Map<string, { nombre: string; d: number; menor: boolean; lat: number; lng: number }>();
+    for (const w of xml.matchAll(/<way id="\d+"[^>]*>([\s\S]*?)<\/way>/g)) {
+      const nombre = w[1].match(/<tag k="name" v="([^"]+)"/)?.[1].trim();
+      if (!nombre || nombre.length < 2 || !/<tag k="highway"/.test(w[1])) continue;
+      if (calle && mismaCalle(nombre, calle)) continue;
+      let d = Infinity, sLat = 0, sLng = 0, n = 0;
+      for (const nd of w[1].matchAll(/<nd ref="(\d+)"/g)) {
+        const p = nodos.get(nd[1]);
+        if (!p) continue;
+        d = Math.min(d, Math.hypot((p[0] - lat) * 110540, (p[1] - lng) * kx));
+        sLat += p[0]; sLng += p[1]; n++;
+      }
+      if (!n || d > 130) continue;
+      const v = vias.get(nombre);
+      if (!v || d < v.d) vias.set(nombre, { nombre, d, menor: /^(privada|cerrada|andador|pasaje|callejon)\s+/i.test(nombre), lat: sLat / n, lng: sLng / n });
+    }
+    let c = [...vias.values()];
+    if (!c.length) return '';
+    const mayores = c.filter((x) => !x.menor);
+    if (mayores.length >= 2) c = mayores;
+    c.sort((a, b) => a.d - b.d);
+    if (c.length === 1 || (c[0].d < 18 && c[1].d > 45)) return `Esq. con ${c[0].nombre}`;
+    let [a, b] = c;
+    if (Math.abs(a.lng - b.lng) > 0.0002 ? a.lng > b.lng : a.lat > b.lat) [a, b] = [b, a];
+    return `Entre ${a.nombre} y ${b.nombre}`;
+  } catch {
+    return '';
+  } finally {
+    clearTimeout(to);
   }
 }
 

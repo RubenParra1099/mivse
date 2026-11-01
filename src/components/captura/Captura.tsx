@@ -5,7 +5,7 @@ import {
   APORTACIONES, CARRERAS, ENCUESTADORES, ESTATUS_INFO, ESTATUS_LABORAL, MUNICIPIOS, NIVEL_INFO, RANGOS_INGRESO, SECTORES,
 } from '@/lib/catalogos';
 import { calcularIVE, nivelDe } from '@/lib/ive';
-import { callesCercanas, buscarDireccion, direccionDe, leerGPS, municipioCercano, type Sugerencia } from '@/lib/geo-campo';
+import { callesCercanas, buscarDireccion, calleYNumero, direccionDe, entreCallesOSM, leerGPS, municipioCercano, textoEntreCalles, type Sugerencia } from '@/lib/geo-campo';
 import { descartar, encolar, nuevoUuid, reintentar, sincronizar, useCola, useEnLinea, type ItemCola } from '@/lib/cola-campo';
 import { fmtN, haceCuanto } from '@/lib/formato';
 import type { CapturaCampo, Egresado, EgresadoResumen } from '@/lib/tipos';
@@ -122,15 +122,18 @@ export function Captura() {
 
   // ── Ubicación: GPS, calles detectadas y dirección ──
   const [gps, setGps] = useState<{ buscando: boolean; precision: number | null; error: string | null }>({ buscando: false, precision: null, error: null });
-  const [detectado, setDetectado] = useState<{ calle: string | null; entre: string[]; colonia: string | null; numero: string | null } | null>(null);
+  const [detectado, setDetectado] = useState<{ domicilio: string; entre: string; colonia: string | null } | null>(null);
   const auto = useRef({ domicilio: '', entreCalles: '', colonia: '' });
   const pararGps = useRef<() => void>(() => {});
+  const ultimaUbicacion = useRef(0);
 
+  // Dirección y entre calles como en SIMV Call Center: con conexión, Nominatim + vialidades de OpenStreetMap;
+  // sin conexión (o si OSM no responde), la red vial local.
   const ubicar = useCallback(async (lat: number, lng: number, origen: Form['origenUbicacion'], precision: number | null) => {
+    const n = ++ultimaUbicacion.current;
+    const vigente = () => n === ultimaUbicacion.current; // el pin pudo moverse mientras se consultaba
     setF((x) => ({ ...x, lat, lng, origenUbicacion: origen, precision, municipio: municipioCercano(lat, lng) }));
     setErrores((e) => ({ ...e, lat: undefined }));
-    const c = await callesCercanas(lat, lng).catch(() => ({ calle: null, entre: [] as string[], distancia: null }));
-    setDetectado({ calle: c.calle, entre: c.entre, colonia: null, numero: null });
     // Rellena sólo los campos vacíos o que se llenaron automáticamente (respeta lo que escribió el encuestador)
     const rellenar = (k: 'domicilio' | 'entreCalles' | 'colonia', v: string) =>
       setF((x) => {
@@ -138,18 +141,26 @@ export function Captura() {
         auto.current[k] = v;
         return { ...x, [k]: v };
       });
+
+    const c = await callesCercanas(lat, lng).catch(() => ({ calle: null, entre: [] as string[], distancia: null }));
+    if (!vigente()) return;
+    const local = textoEntreCalles(c.entre);
+    setDetectado(c.calle ? { domicilio: c.calle, entre: local, colonia: null } : null);
     if (c.calle) rellenar('domicilio', c.calle);
-    if (c.entre.length) rellenar('entreCalles', c.entre.join(' y '));
-    if (navigator.onLine) {
-      const d = await direccionDe(lat, lng);
-      if (d) {
-        setDetectado({ calle: c.calle ?? d.calle, entre: c.entre, colonia: d.colonia, numero: d.numero });
-        if (d.colonia) rellenar('colonia', d.colonia);
-        const calle = c.calle ?? d.calle;
-        if (calle) rellenar('domicilio', d.numero ? `${calle} ${d.numero}` : calle);
-        if (d.municipio) setF((x) => ({ ...x, municipio: d.municipio! }));
-      }
-    }
+    rellenar('entreCalles', local);
+    if (!navigator.onLine) return;
+
+    const d = await direccionDe(lat, lng);
+    if (!vigente()) return;
+    const calle = d?.calle ?? c.calle;
+    const entre = (await entreCallesOSM(lat, lng, calle)) || local;
+    if (!vigente()) return;
+    const domicilio = calle ? calleYNumero(calle, d?.numero ?? null) : '';
+    setDetectado(domicilio ? { domicilio, entre, colonia: d?.colonia ?? null } : null);
+    rellenar('domicilio', domicilio);
+    rellenar('entreCalles', entre);
+    if (d?.colonia) rellenar('colonia', d.colonia);
+    if (d?.municipio) setF((x) => ({ ...x, municipio: d.municipio! }));
   }, []);
 
   const usarGPS = () => {
@@ -217,6 +228,7 @@ export function Captura() {
       setF(deEgresado(e));
       setErrores({});
       setDetectado(null);
+      ultimaUbicacion.current++;
       setQ('');
       setRes([]);
       setGps({ buscando: false, precision: null, error: null });
@@ -232,6 +244,7 @@ export function Captura() {
     setF({ ...VACIO, nombre: q && !/^\d+$/.test(q.trim()) ? q.trim() : '', matricula: /^\d+$/.test(q.trim()) ? q.trim() : '' });
     setErrores({});
     setDetectado(null);
+    ultimaUbicacion.current++;
     setQ('');
     setRes([]);
   };
@@ -242,6 +255,7 @@ export function Captura() {
     setF(VACIO);
     setErrores({});
     setDetectado(null);
+    ultimaUbicacion.current++;
     setGps({ buscando: false, precision: null, error: null });
   };
   const activo = nuevo || base != null;
@@ -447,12 +461,12 @@ export function Captura() {
                   </div>
                   {errores.lat && <div className="cap-error">{errores.lat}</div>}
 
-                  {detectado?.calle && (
+                  {detectado && (
                     <div className="cap-detectado">
                       <Icono n="mapa" s={16} />
                       <span>
-                        <b>{detectado.calle}{detectado.numero ? ` ${detectado.numero}` : ''}</b>
-                        {detectado.entre.length > 0 && <> entre <b>{detectado.entre.join(' y ')}</b></>}
+                        <b>{detectado.domicilio}</b>
+                        {detectado.entre && <> · <b>{detectado.entre}</b></>}
                         {detectado.colonia && <> · Col. {detectado.colonia}</>}
                       </span>
                     </div>
