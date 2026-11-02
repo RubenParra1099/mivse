@@ -172,7 +172,17 @@ export function Tablero() {
     URL.revokeObjectURL(a.href);
   };
 
-  const resumenFiltros = DIMS.filter((k) => f[k].length).map((k) => `${NOMBRE_DIM[k]}: ${f[k].map((v) => etiquetaDe(k, v)).join(', ')}`).join(' · ') || 'Todo el censo';
+  // El PDF siempre sale en tema claro: las gráficas y el mapa se pintan en canvas con los colores del tema,
+  // así que se cambia a claro, se espera a que se repinten (la animación de ECharts dura 500 ms) y se restaura al cerrar
+  const exportarPDF = () => {
+    const raiz = document.documentElement;
+    if (raiz.dataset.theme !== 'dark') return window.print();
+    raiz.dataset.theme = 'light';
+    window.addEventListener('afterprint', () => { raiz.dataset.theme = 'dark'; }, { once: true });
+    setTimeout(() => window.print(), 700);
+  };
+
+  const resumenFiltros =DIMS.filter((k) => f[k].length).map((k) => `${NOMBRE_DIM[k]}: ${f[k].map((v) => etiquetaDe(k, v)).join(', ')}`).join(' · ') || 'Todo el censo';
 
   return (
     <div className="tab-raiz">
@@ -190,7 +200,7 @@ export function Tablero() {
         <div className="no-print" style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
           <button className="btn" onClick={cargar} disabled={cargando}><Icono n="reset" s={15} /> {cargando ? 'Actualizando…' : 'Actualizar'}</button>
           <button className="btn" onClick={exportarCSV}><Icono n="descarga" s={15} /> CSV</button>
-          <button className="btn primary" onClick={() => window.print()}><Icono n="pdf" s={15} /> Exportar PDF</button>
+          <button className="btn primary" onClick={exportarPDF}><Icono n="pdf" s={15} /> Exportar PDF</button>
         </div>
       </header>
 
